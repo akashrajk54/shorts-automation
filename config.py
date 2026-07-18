@@ -37,6 +37,8 @@ PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 NICHE = os.getenv("NICHE", "AI tools and tech tips").strip()
 # Prompt/video style: "tips" (single-narrator tip) or "story" (two kids dialogue).
 PROMPT_STYLE = os.getenv("PROMPT_STYLE", "tips").strip().lower()
+# Spoken language of the video (e.g. hindi, bengali, english, spanish, tamil...).
+VIDEO_LANGUAGE = os.getenv("VIDEO_LANGUAGE", "hindi").strip().lower()
 
 # --- Upload ---
 AUTO_UPLOAD = os.getenv("AUTO_UPLOAD", "true").strip().lower() == "true"

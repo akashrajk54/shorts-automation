@@ -117,10 +117,11 @@ def _extract_json(text: str) -> dict:
     return json.loads(match.group(0))
 
 
-def generate_content(niche: str = None, style: str = None) -> dict:
+def generate_content(niche: str = None, style: str = None, language: str = None) -> dict:
     """Return video content. Style 'tips' -> narration; 'story' -> two-kid dialogue."""
     niche = niche or config.NICHE
     style = (style or config.PROMPT_STYLE or "tips").lower()
+    language = (language or config.VIDEO_LANGUAGE or "english").strip()
     genai.configure(api_key=config.GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-flash-latest")
 
@@ -129,8 +130,18 @@ def generate_content(niche: str = None, style: str = None) -> dict:
     past = history.recent_topics()
     history_block = "\n".join(f"- {p}" for p in past) or "- (none yet)"
 
+    lang_directive = (
+        f"CRITICAL LANGUAGE RULE: Write ALL spoken text (the narration and EVERY dialogue "
+        f"line) and the title and description in {language}, using natural, native, "
+        f"conversational {language} (in its native script). Keep real tool/brand names in "
+        f"their original spelling. 'tags' are lowercase keywords ({language} and/or english); "
+        f"'hashtags' stay relevant and MUST include #shorts. IMPORTANT: keep 'image_prompts' "
+        f"in ENGLISH always (the image model needs English).\n\n"
+    )
     template = STORY_PROMPT_TEMPLATE if style == "story" else TIPS_PROMPT_TEMPLATE
-    prompt = template.format(niche=niche, trends=trends_block, history=history_block)
+    prompt = lang_directive + template.format(
+        niche=niche, trends=trends_block, history=history_block
+    )
     response = model.generate_content(prompt)
     data = _extract_json(response.text)
 

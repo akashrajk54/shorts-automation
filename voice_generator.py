@@ -12,6 +12,41 @@ import edge_tts
 #   en-US-BrianMultilingualNeural, en-GB-RyanNeural, en-IN-PrabhatNeural
 DEFAULT_VOICE = "en-US-AvaMultilingualNeural"
 
+# --- Per-language voices (all free edge-tts neural voices) ---
+# Each entry: narrator (tips mode) + girl/boy (story mode). The boy uses a male
+# voice pitched up so it reads like a little boy.
+LANGUAGE_VOICES = {
+    "english": {"narrator": "en-US-AvaMultilingualNeural",
+                "girl": "en-US-AnaNeural", "boy": "en-GB-RyanNeural"},
+    "hindi": {"narrator": "hi-IN-SwaraNeural",
+              "girl": "hi-IN-SwaraNeural", "boy": "hi-IN-MadhurNeural"},
+    "bengali": {"narrator": "bn-IN-TanishaaNeural",
+                "girl": "bn-IN-TanishaaNeural", "boy": "bn-IN-BashkarNeural"},
+    "tamil": {"narrator": "ta-IN-PallaviNeural",
+              "girl": "ta-IN-PallaviNeural", "boy": "ta-IN-ValluvarNeural"},
+    "telugu": {"narrator": "te-IN-ShrutiNeural",
+               "girl": "te-IN-ShrutiNeural", "boy": "te-IN-MohanNeural"},
+    "marathi": {"narrator": "mr-IN-AarohiNeural",
+                "girl": "mr-IN-AarohiNeural", "boy": "mr-IN-ManoharNeural"},
+    "spanish": {"narrator": "es-ES-ElviraNeural",
+                "girl": "es-ES-ElviraNeural", "boy": "es-ES-AlvaroNeural"},
+    "french": {"narrator": "fr-FR-DeniseNeural",
+               "girl": "fr-FR-DeniseNeural", "boy": "fr-FR-HenriNeural"},
+    "german": {"narrator": "de-DE-KatjaNeural",
+               "girl": "de-DE-KatjaNeural", "boy": "de-DE-ConradNeural"},
+    "arabic": {"narrator": "ar-EG-SalmaNeural",
+               "girl": "ar-EG-SalmaNeural", "boy": "ar-EG-ShakirNeural"},
+    "japanese": {"narrator": "ja-JP-NanamiNeural",
+                 "girl": "ja-JP-NanamiNeural", "boy": "ja-JP-KeitaNeural"},
+    "portuguese": {"narrator": "pt-BR-FranciscaNeural",
+                   "girl": "pt-BR-FranciscaNeural", "boy": "pt-BR-AntonioNeural"},
+}
+
+
+def _voices_for_language(language: str) -> dict:
+    """Return the voice set for a language, falling back to English if unknown."""
+    return LANGUAGE_VOICES.get((language or "").strip().lower(), LANGUAGE_VOICES["english"])
+
 
 async def _synthesize(text: str, out_path: Path, voice: str,
                       rate: str = "+3%", volume: str = "+10%", pitch: str = "+0Hz") -> None:
@@ -20,25 +55,27 @@ async def _synthesize(text: str, out_path: Path, voice: str,
     await communicate.save(str(out_path))
 
 
-def generate_voice(text: str, voice: str = DEFAULT_VOICE, filename: str = "voice.mp3") -> Path:
-    """Generate an MP3 from text and return its path."""
+def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
+                   language: str = None) -> Path:
+    """Generate an MP3 from text and return its path (voice picked by language)."""
+    if voice is None:
+        voice = _voices_for_language(language or config.VIDEO_LANGUAGE)["narrator"]
     out_path = config.OUTPUT_DIR / filename
     asyncio.run(_synthesize(text, out_path, voice))
     return out_path
 
 
-# --- Story mode: two child-like voices for the girl and the boy ---
-# Ana is a genuine child (girl) voice. For the boy we pitch a young male voice up
-# so it reads like a little boy. Both are free edge-tts voices.
-GIRL_VOICE = {"voice": "en-US-AnaNeural", "rate": "+8%", "pitch": "+0Hz"}
-BOY_VOICE = {"voice": "en-GB-RyanNeural", "rate": "+6%", "pitch": "+35Hz"}
+def _voice_for(speaker: str, language: str = None) -> dict:
+    """Return {voice, rate, pitch} for a story speaker in the given language."""
+    voices = _voices_for_language(language or config.VIDEO_LANGUAGE)
+    if str(speaker).lower().startswith("b"):
+        # Boy: male voice pitched up to sound like a little boy.
+        return {"voice": voices["boy"], "rate": "+6%", "pitch": "+35Hz"}
+    return {"voice": voices["girl"], "rate": "+8%", "pitch": "+0Hz"}
 
 
-def _voice_for(speaker: str) -> dict:
-    return BOY_VOICE if str(speaker).lower().startswith("b") else GIRL_VOICE
-
-
-def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3"):
+def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
+                            language: str = None):
     """Synthesize a two-speaker dialogue into one MP3.
 
     Returns (audio_path, segments) where each segment is
@@ -46,6 +83,7 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3"):
     """
     from moviepy.editor import AudioFileClip, concatenate_audioclips
 
+    language = language or config.VIDEO_LANGUAGE
     out_path = config.OUTPUT_DIR / filename
     tmp_paths: list[Path] = []
     clips = []
@@ -57,7 +95,7 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3"):
         line = (turn.get("line") or "").strip()
         if not line:
             continue
-        v = _voice_for(speaker)
+        v = _voice_for(speaker, language)
         tmp = config.OUTPUT_DIR / f"_line_{i}.mp3"
         asyncio.run(_synthesize(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"]))
         clip = AudioFileClip(str(tmp))

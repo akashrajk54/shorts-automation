@@ -38,14 +38,36 @@ def _ken_burns(image_path: Path, duration: float, zoom: float = 0.10) -> Composi
     ).set_duration(duration)
 
 
+# Script-specific fonts so captions render correctly in non-Latin languages.
+_SUP = "/System/Library/Fonts/Supplemental/"
+LANGUAGE_FONTS = {
+    "hindi": [_SUP + "Devanagari Sangam MN.ttc", _SUP + "DevanagariMT.ttc"],
+    "marathi": [_SUP + "Devanagari Sangam MN.ttc", _SUP + "DevanagariMT.ttc"],
+    "bengali": [_SUP + "Bangla Sangam MN.ttc", _SUP + "Bangla MN.ttc"],
+    "tamil": [_SUP + "Tamil Sangam MN.ttc", _SUP + "Tamil MN.ttc"],
+    "telugu": [_SUP + "Telugu Sangam MN.ttc", _SUP + "Telugu MN.ttc"],
+    "gujarati": [_SUP + "Gujarati Sangam MN.ttc"],
+    "kannada": [_SUP + "Kannada Sangam MN.ttc"],
+    "malayalam": [_SUP + "Malayalam Sangam MN.ttc"],
+    "punjabi": [_SUP + "Gurmukhi Sangam MN.ttc"],
+    "arabic": [_SUP + "GeezaPro.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf"],
+    "japanese": ["/System/Library/Fonts/Hiragino Sans GB.ttc"],
+    "chinese": ["/System/Library/Fonts/PingFang.ttc"],
+}
+
+# Latin bold fonts used for English + as the final fallback.
+_LATIN_FONTS = [
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/Library/Fonts/Arial Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Impact.ttf",
+]
+
+
 def _load_font(size: int) -> ImageFont.FreeTypeFont:
-    """Load a bold TrueType font, falling back across common macOS paths."""
-    candidates = [
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/Library/Fonts/Arial Bold.ttf",
-        "/System/Library/Fonts/Supplemental/Impact.ttf",
-    ]
+    """Load a font that supports the current VIDEO_LANGUAGE's script."""
+    lang = (getattr(config, "VIDEO_LANGUAGE", "english") or "english").lower()
+    candidates = LANGUAGE_FONTS.get(lang, []) + _LATIN_FONTS
     for path in candidates:
         try:
             return ImageFont.truetype(path, size)
