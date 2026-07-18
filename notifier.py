@@ -1,0 +1,62 @@
+"""Optional Telegram notifications for success / manual-upload fallback."""
+import time
+from pathlib import Path
+
+import requests
+
+import config
+
+
+def _enabled() -> bool:
+    return bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
+
+
+def notify(message: str, retries: int = 3) -> None:
+    """Send a text message to Telegram (no-op if not configured), with retries."""
+    if not _enabled():
+        print(f"[notify] {message}")
+        return
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    for attempt in range(retries):
+        try:
+            resp = requests.post(
+                url,
+                data={"chat_id": config.TELEGRAM_CHAT_ID, "text": message},
+                timeout=30,
+            )
+            if resp.ok:
+                return
+            print(f"[notify] Telegram returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[notify] attempt {attempt + 1} failed: {exc}")
+        time.sleep(2 * (attempt + 1))
+    print(f"[notify] gave up sending message after {retries} attempts")
+
+
+def send_video(video_path: Path, caption: str, retries: int = 3) -> bool:
+    """Send the finished MP4 to Telegram. Returns True if delivered."""
+    if not _enabled():
+        print(f"[notify] video ready for manual upload: {video_path}")
+        return False
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendVideo"
+    for attempt in range(retries):
+        try:
+            with open(video_path, "rb") as fh:
+                resp = requests.post(
+                    url,
+                    data={
+                        "chat_id": config.TELEGRAM_CHAT_ID,
+                        "caption": caption[:1000],
+                        "supports_streaming": True,
+                    },
+                    files={"video": fh},
+                    timeout=300,
+                )
+            if resp.ok:
+                return True
+            print(f"[notify] sendVideo returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[notify] send video attempt {attempt + 1} failed: {exc}")
+        time.sleep(3 * (attempt + 1))
+    notify(f"Video ready for manual upload but Telegram send failed:\n{video_path}")
+    return False

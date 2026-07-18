@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+output/
+token.json
+client_secret*.json
+*.mp3
+*.mp4
+.DS_Store
+venv/
+
+# generated topic history
+history.json

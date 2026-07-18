@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run full pipeline (main.py)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/venv/bin/python",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true
+    },
+    {
+      "name": "Test content generator",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/content_generator.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/venv/bin/python",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true
+    },
+    {
+      "name": "Test voice generator",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/voice_generator.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/venv/bin/python",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true
+    },
+    {
+      "name": "Test video builder",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/video_builder.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/venv/bin/python",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true
+    }
+  ]
+}
