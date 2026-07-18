@@ -50,6 +50,11 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 VIDEO_FPS = 30
+# Per-request timeout (seconds) for AI image downloads.
+try:
+    IMAGE_TIMEOUT = int(os.getenv("IMAGE_TIMEOUT", "90"))
+except ValueError:
+    IMAGE_TIMEOUT = 90
 
 # --- Background music ---
 # Drop any royalty-free .mp3/.wav files into assets/music/ and they'll be mixed

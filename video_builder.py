@@ -176,6 +176,16 @@ def _make_caption_clips(text: str, total_duration: float) -> list[ImageClip]:
     return clips
 
 
+def _gradient_bg() -> np.ndarray:
+    """Build a soft vertical purple-blue gradient as a fallback background."""
+    top = np.array([40, 30, 70])     # deep purple
+    bottom = np.array([15, 20, 45])  # dark blue
+    h, w = config.VIDEO_HEIGHT, config.VIDEO_WIDTH
+    ramp = np.linspace(0, 1, h)[:, None]
+    col = (top[None, :] * (1 - ramp) + bottom[None, :] * ramp).astype(np.uint8)
+    return np.repeat(col[:, None, :], w, axis=1)
+
+
 def _pick_music_file() -> Path | None:
     """Return a random royalty-free music file from assets/music, if any exist."""
     if not config.BACKGROUND_MUSIC or not config.MUSIC_DIR.exists():
@@ -226,12 +236,8 @@ def build_video(narration: str, voice_path: Path, image_paths: list[Path],
         slides = [_ken_burns(p, per) for p in image_paths]
         bg = concatenate_videoclips(slides, method="compose").set_duration(duration)
     else:
-        # Fallback: solid dark background if no images were generated.
-        from moviepy.editor import ColorClip
-        bg = ColorClip(
-            size=(config.VIDEO_WIDTH, config.VIDEO_HEIGHT),
-            color=(15, 15, 20),
-        ).set_duration(duration)
+        # Fallback: a soft vertical gradient (nicer than flat black) if no images.
+        bg = ImageClip(_gradient_bg()).set_duration(duration)
 
     if caption_segments:
         caption_clips = _make_caption_clips_from_segments(caption_segments)
