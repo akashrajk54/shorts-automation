@@ -57,6 +57,12 @@ try:
     IMAGE_TIMEOUT = int(os.getenv("IMAGE_TIMEOUT", "90"))
 except ValueError:
     IMAGE_TIMEOUT = 90
+# How many scene images to fetch concurrently. Kept small because Pollinations'
+# free tier rate-limits bursts (HTTP 429). 2 is a good speed/reliability balance.
+try:
+    MAX_IMAGE_WORKERS = int(os.getenv("MAX_IMAGE_WORKERS", "2"))
+except ValueError:
+    MAX_IMAGE_WORKERS = 2
 
 # --- Background music ---
 # Drop any royalty-free .mp3/.wav files into assets/music/ and they'll be mixed

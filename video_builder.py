@@ -25,17 +25,50 @@ def _fit_cover(clip: ImageClip) -> ImageClip:
     return clip.resize(ratio)
 
 
-def _ken_burns(image_path: Path, duration: float, zoom: float = 0.10) -> CompositeVideoClip:
-    """Create a slow zoom (Ken Burns) slide from an image, cropped to the frame."""
+def _ken_burns(image_path: Path, duration: float, start_time: float = 0.0,
+               envelope=None, zoom: float = 0.10, pulse: float = 0.05) -> CompositeVideoClip:
+    """Slow Ken Burns zoom that also gently PULSES with the voice's loudness."""
     base = ImageClip(str(image_path)).set_duration(duration)
     base = _fit_cover(base)
-    zoomed = (
-        base.resize(lambda t: 1 + zoom * (t / max(duration, 0.1)))
-        .set_position(("center", "center"))
-    )
+
+    def scale(t):
+        s = 1 + zoom * (t / max(duration, 0.1))
+        if envelope is not None:
+            s += pulse * envelope(start_time + t)  # louder speech -> slightly bigger
+        return s
+
+    zoomed = base.resize(scale).set_position(("center", "center"))
     return CompositeVideoClip(
         [zoomed], size=(config.VIDEO_WIDTH, config.VIDEO_HEIGHT)
     ).set_duration(duration)
+
+
+def _audio_envelope(voice_path: Path, fps: int = 50):
+    """Return a callable env(t)->0..1 giving the (smoothed) loudness at time t."""
+    try:
+        clip = AudioFileClip(str(voice_path))
+        # NOTE: clip.to_soundarray() is broken on moviepy 1.0.3 + numpy 2.x
+        # (it passes a generator to np.vstack), so collect chunks into a list.
+        chunks = list(clip.iter_chunks(fps=22050, quantize=False, nbytes=2, chunksize=22050))
+        clip.close()
+        arr = np.concatenate(chunks, axis=0)
+    except Exception:  # noqa: BLE001
+        return lambda t: 0.0
+    if arr.ndim > 1:
+        arr = arr.mean(axis=1)
+    per = max(1, int(22050 / fps))
+    n = len(arr) // per
+    if n == 0:
+        return lambda t: 0.0
+    rms = np.sqrt(np.mean(arr[:n * per].reshape(n, per) ** 2, axis=1))
+    peak = rms.max() or 1.0
+    vals = np.clip(rms / peak, 0.0, 1.0)
+    times = np.arange(n) / fps
+
+    def env(t: float) -> float:
+        return float(np.interp(t, times, vals, left=vals[0], right=vals[-1]))
+
+    return env
 
 
 # Script-specific fonts so captions render correctly in non-Latin languages.
@@ -156,27 +189,103 @@ def _render_caption_image(text: str, duration: float, color: str = "white") -> I
 
 
 # Speaker colors for story mode (readable over the black stroke).
-SPEAKER_COLORS = {"girl": "#FF9ED8", "boy": "#8FD3FF"}
+SPEAKER_COLORS = {"girl": "#FF9ED8", "boy": "#8FD3FF", "narrator": "white"}
+# Colour of the word currently being spoken (karaoke highlight).
+HIGHLIGHT_COLOR = "#FFE14D"
+MAX_WORDS_PER_GROUP = 5
 
 
-def _make_caption_clips_from_segments(segments: list[dict]) -> list[ImageClip]:
-    """Build caption clips from pre-timed dialogue segments, color-coded per speaker.
+def _layout_words(draw, words: list[str], font, max_width: int):
+    """Wrap words into lines that fit max_width. Returns list of lines,
+    each a list of (word, local_index)."""
+    space_w = draw.textlength(" ", font=font)
+    lines, current, current_w = [], [], 0.0
+    for idx, word in enumerate(words):
+        ww = draw.textlength(word, font=font)
+        add = ww if not current else space_w + ww
+        if current and current_w + add > max_width:
+            lines.append(current)
+            current, current_w = [], 0.0
+            add = ww
+        current.append((word, idx))
+        current_w += add
+    if current:
+        lines.append(current)
+    return lines
 
-    Each line is further split into short chunks that share the line's time slot.
-    """
+
+def _render_karaoke_image(words: list[str], active_idx: int, base_color: str) -> np.ndarray:
+    """Render a group of words centered, with the active word highlighted."""
+    margin = 90
+    max_width = config.VIDEO_WIDTH - 2 * margin
+    max_block_height = int(config.VIDEO_HEIGHT * 0.35)
+    stroke = 6
+
+    img = Image.new("RGBA", (config.VIDEO_WIDTH, config.VIDEO_HEIGHT), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Auto-shrink until the wrapped block fits.
+    font_size = 96
+    while font_size >= 40:
+        font = _load_font(font_size)
+        lines = _layout_words(draw, words, font, max_width)
+        line_height = int(font_size * 1.2)
+        block_height = line_height * len(lines)
+        widest = max(
+            (draw.textlength(" ".join(w for w, _ in ln), font=font) for ln in lines),
+            default=0,
+        )
+        if widest <= max_width and block_height <= max_block_height:
+            break
+        font_size -= 6
+
+    space_w = draw.textlength(" ", font=font)
+    start_y = int(config.VIDEO_HEIGHT * 0.68) - block_height // 2
+    y = start_y
+    for line in lines:
+        line_w = sum(draw.textlength(w, font=font) for w, _ in line) + space_w * (len(line) - 1)
+        x = (config.VIDEO_WIDTH - line_w) // 2
+        for word, idx in line:
+            fill = HIGHLIGHT_COLOR if idx == active_idx else base_color
+            draw.text((x, y), word, font=font, fill=fill,
+                      stroke_width=stroke, stroke_fill="black")
+            x += draw.textlength(word, font=font) + space_w
+        y += line_height
+
+    return np.array(img)
+
+
+def _group_words(words: list[dict], max_size: int = MAX_WORDS_PER_GROUP):
+    """Group consecutive words (same speaker, up to max_size) for on-screen chunks."""
+    groups: list[list[dict]] = []
+    current: list[dict] = []
+    for w in words:
+        if current and (len(current) >= max_size
+                        or current[0].get("speaker") != w.get("speaker")):
+            groups.append(current)
+            current = []
+        current.append(w)
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _make_karaoke_clips(words: list[dict], total_duration: float) -> list[ImageClip]:
+    """Build word-synced karaoke caption clips from per-word timings."""
     clips: list[ImageClip] = []
-    for seg in segments:
-        color = SPEAKER_COLORS.get(str(seg.get("speaker", "")).lower(), "white")
-        chunks = _segment_narration(seg["text"])
-        total_words = sum(len(c.split()) for c in chunks) or 1
-        t = seg["start"]
-        for j, chunk in enumerate(chunks):
-            share = len(chunk.split()) / total_words
-            d = seg["duration"] * share
-            if j == len(chunks) - 1:
-                d = max(0.1, seg["start"] + seg["duration"] - t)
-            clips.append(_render_caption_image(chunk, d, color).set_start(t))
-            t += d
+    for group in _group_words(words):
+        base_color = SPEAKER_COLORS.get(str(group[0].get("speaker", "")).lower(), "white")
+        texts = [w["text"] for w in group]
+        # Pre-render each highlight state once per group (cheap + avoids duplicates).
+        rendered = {k: _render_karaoke_image(texts, k, base_color) for k in range(len(group))}
+        group_end = min(group[-1]["start"] + group[-1]["duration"], total_duration)
+        for k, w in enumerate(group):
+            start = min(w["start"], total_duration)
+            end = group[k + 1]["start"] if k + 1 < len(group) else group_end
+            dur = max(0.08, min(end, total_duration) - start)
+            if dur <= 0:
+                continue
+            clips.append(ImageClip(rendered[k]).set_duration(dur).set_start(start))
     return clips
 
 
@@ -239,11 +348,12 @@ def _mix_background_music(voice: AudioFileClip, duration: float) -> CompositeAud
 
 
 def build_video(narration: str, voice_path: Path, image_paths: list[Path],
-                filename: str = "output.mp4", caption_segments: list[dict] = None) -> Path:
+                filename: str = "output.mp4", word_segments: list[dict] = None) -> Path:
     """Create the final Shorts MP4 from an AI-image slideshow and return its path.
 
-    If caption_segments is given (story mode), captions are rendered synced + color-coded
-    per speaker; otherwise the narration is auto-split into timed chunks.
+    If word_segments (per-word timings) are given, captions are rendered as
+    word-by-word karaoke (color-coded per speaker); otherwise the narration is
+    auto-split into timed chunks. Scenes also gently pulse with the voice loudness.
     """
     out_path = config.OUTPUT_DIR / filename
 
@@ -253,16 +363,22 @@ def build_video(narration: str, voice_path: Path, image_paths: list[Path],
     duration = max(0.1, audio.duration - 0.05)
     audio = audio.set_duration(duration)
 
+    # Loudness envelope drives the audio-reactive zoom pulse.
+    envelope = _audio_envelope(voice_path)
+
     if image_paths:
         per = duration / len(image_paths)
-        slides = [_ken_burns(p, per) for p in image_paths]
+        slides = [
+            _ken_burns(p, per, start_time=idx * per, envelope=envelope)
+            for idx, p in enumerate(image_paths)
+        ]
         bg = concatenate_videoclips(slides, method="compose").set_duration(duration)
     else:
         # Fallback: a soft vertical gradient (nicer than flat black) if no images.
         bg = ImageClip(_gradient_bg()).set_duration(duration)
 
-    if caption_segments:
-        caption_clips = _make_caption_clips_from_segments(caption_segments)
+    if word_segments:
+        caption_clips = _make_karaoke_clips(word_segments, duration)
     else:
         caption_clips = _make_caption_clips(narration, duration)
 
@@ -287,10 +403,10 @@ if __name__ == "__main__":
 
     config.validate()
     demo = "Here are three AI tools that will save you hours every single week."
-    vp = generate_voice(demo)
+    vp, words = generate_voice(demo)
     imgs = generate_images([
         "Futuristic AI dashboard glowing on a laptop, cinematic, vertical",
         "Robot hand typing on keyboard, neon blue lighting, vertical",
     ])
-    p = build_video(demo, vp, imgs)
+    p = build_video(demo, vp, imgs, word_segments=words)
     print(f"Saved: {p}")

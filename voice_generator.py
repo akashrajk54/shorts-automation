@@ -49,20 +49,39 @@ def _voices_for_language(language: str) -> dict:
 
 
 async def _synthesize(text: str, out_path: Path, voice: str,
-                      rate: str = "+3%", volume: str = "+10%", pitch: str = "+0Hz") -> None:
-    # Slightly slower + fuller volume reads more naturally and clearly.
-    communicate = edge_tts.Communicate(text, voice, rate=rate, volume=volume, pitch=pitch)
-    await communicate.save(str(out_path))
+                      rate: str = "+3%", volume: str = "+10%", pitch: str = "+0Hz") -> list[dict]:
+    """Stream TTS to out_path and return per-word timings.
+
+    Each word dict: {"text", "start", "duration"} in seconds (relative to this clip).
+    """
+    communicate = edge_tts.Communicate(
+        text, voice, rate=rate, volume=volume, pitch=pitch, boundary="WordBoundary"
+    )
+    words: list[dict] = []
+    with open(out_path, "wb") as f:
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                f.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                # edge-tts reports offsets/durations in 100-nanosecond units.
+                words.append({
+                    "text": chunk["text"],
+                    "start": chunk["offset"] / 1e7,
+                    "duration": chunk["duration"] / 1e7,
+                })
+    return words
 
 
 def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
-                   language: str = None) -> Path:
-    """Generate an MP3 from text and return its path (voice picked by language)."""
+                   language: str = None):
+    """Generate an MP3 and return (path, words) with per-word timings for captions."""
     if voice is None:
         voice = _voices_for_language(language or config.VIDEO_LANGUAGE)["narrator"]
     out_path = config.OUTPUT_DIR / filename
-    asyncio.run(_synthesize(text, out_path, voice))
-    return out_path
+    words = asyncio.run(_synthesize(text, out_path, voice))
+    for w in words:
+        w["speaker"] = "narrator"
+    return out_path, words
 
 
 def _voice_for(speaker: str, language: str = None) -> dict:
@@ -78,8 +97,8 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
                             language: str = None):
     """Synthesize a two-speaker dialogue into one MP3.
 
-    Returns (audio_path, segments) where each segment is
-    {"text", "speaker", "start", "duration"} for caption syncing.
+    Returns (audio_path, words) where each word is
+    {"text", "speaker", "start", "duration"} (global timings) for karaoke captions.
     """
     from moviepy.editor import AudioFileClip, concatenate_audioclips
 
@@ -87,7 +106,7 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
     out_path = config.OUTPUT_DIR / filename
     tmp_paths: list[Path] = []
     clips = []
-    segments = []
+    words: list[dict] = []
     start = 0.0
 
     for i, turn in enumerate(dialogue):
@@ -97,11 +116,19 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
             continue
         v = _voice_for(speaker, language)
         tmp = config.OUTPUT_DIR / f"_line_{i}.mp3"
-        asyncio.run(_synthesize(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"]))
+        line_words = asyncio.run(
+            _synthesize(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"])
+        )
         clip = AudioFileClip(str(tmp))
         duration = max(0.1, clip.duration - 0.03)  # trim a hair to avoid mp3 over-read
         clip = clip.subclip(0, duration)
-        segments.append({"text": line, "speaker": speaker, "start": start, "duration": duration})
+        for w in line_words:
+            words.append({
+                "text": w["text"],
+                "speaker": speaker,
+                "start": start + w["start"],
+                "duration": w["duration"],
+            })
         start += duration
         clips.append(clip)
         tmp_paths.append(tmp)
@@ -121,9 +148,9 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
         except OSError:
             pass
 
-    return out_path, segments
+    return out_path, words
 
 
 if __name__ == "__main__":
-    p = generate_voice("This is a quick test of the free edge text to speech engine.")
-    print(f"Saved: {p}")
+    p, words = generate_voice("This is a quick test of the free edge text to speech engine.")
+    print(f"Saved: {p} | {len(words)} word timings")

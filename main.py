@@ -83,20 +83,21 @@ def run() -> None:
         notifier.notify(f"\U0001F4DD Script:\n\n{_format_script(content)}")
 
         # 2. Voice (story mode -> two kid voices; tips mode -> single narrator)
-        caption_segments = None
         if content.get("style") == "story" and content.get("dialogue"):
             notifier.notify(
                 f"\U0001F399\ufe0f Recording the story in {language} with two kid voices "
                 f"(girl + boy)..."
             )
-            voice_path, caption_segments = generate_dialogue_voice(
+            voice_path, word_segments = generate_dialogue_voice(
                 content["dialogue"], filename=f"voice_{stamp}.mp3"
             )
         else:
             notifier.notify(f"\U0001F399\ufe0f Recording the voiceover in {language}...")
-            voice_path = generate_voice(content["narration"], filename=f"voice_{stamp}.mp3")
+            voice_path, word_segments = generate_voice(
+                content["narration"], filename=f"voice_{stamp}.mp3"
+            )
         print(f"Voice saved: {voice_path}")
-        notifier.notify("\u2705 Voiceover ready.")
+        notifier.notify("\u2705 Voiceover ready (word-synced karaoke captions enabled).")
 
         # 3. AI images (Pollinations - free, no key)
         n_scenes = len(content.get("image_prompts", []))
@@ -120,7 +121,7 @@ def run() -> None:
             voice_path=voice_path,
             image_paths=image_paths,
             filename=f"short_{stamp}.mp4",
-            caption_segments=caption_segments,
+            word_segments=word_segments,
         )
         print(f"Video built: {video_path}")
         notifier.notify("✅ Video built successfully! Sending it to you on Telegram...")

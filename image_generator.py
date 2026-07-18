@@ -1,6 +1,7 @@
 """Generate AI images from text prompts using Pollinations.ai (free, no API key)."""
 import hashlib
 import io
+import random
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -44,15 +45,20 @@ def _is_valid_image(data: bytes) -> bool:
 
 
 def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
-    """Download one vertical image, trying multiple providers/seeds until one works."""
+    """Download one vertical image, trying multiple providers/seeds until one works.
+
+    Pollinations' free tier rate-limits bursts (HTTP 429), so we back off
+    exponentially (with jitter) on 429 and cycle through backup models.
+    """
     base_seed = seed if seed is not None else int(hashlib.md5(prompt.encode()).hexdigest(), 16) % 100000
     url = POLLINATIONS_URL.format(prompt=quote(f"{prompt}{QUALITY_SUFFIX}"))
     dest = config.OUTPUT_DIR / f"img_{index}.jpg"
     timeout = getattr(config, "IMAGE_TIMEOUT", 90)
 
     attempt = 0
+    backoff = 4.0  # grows on repeated 429s
     for provider in PROVIDERS:
-        for retry in range(2):
+        for retry in range(3):
             attempt += 1
             params = {
                 "width": config.VIDEO_WIDTH,
@@ -67,6 +73,13 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
             try:
                 start = time.time()
                 resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
+                if resp.status_code == 429:
+                    wait = backoff + random.uniform(0, 2)
+                    backoff = min(backoff * 2, 40)
+                    print(f"[image] scene {index} ({provider['model']}): rate-limited (429), "
+                          f"waiting {wait:.1f}s")
+                    time.sleep(wait)
+                    continue
                 resp.raise_for_status()
                 ctype = resp.headers.get("content-type", "")
                 if ctype.startswith("image") and _is_valid_image(resp.content):
@@ -84,14 +97,30 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
 
 
 def generate_images(prompts: list[str]) -> list[Path]:
-    """Generate images for a list of prompts, returning the successful paths."""
-    paths: list[Path] = []
-    for i, prompt in enumerate(prompts):
-        path = generate_image(prompt, i)
-        if path:
-            print(f"[image] saved scene {i}: {path.name}")
-            paths.append(path)
-    return paths
+    """Generate scene images with LIMITED concurrency (staggered) to dodge 429s.
+
+    Full parallelism trips Pollinations' rate limit, so we use a small worker
+    pool and stagger request starts; each worker also backs off on 429.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    workers = min(getattr(config, "MAX_IMAGE_WORKERS", 2), max(1, len(prompts)))
+
+    def _staggered(prompt: str, i: int) -> Path | None:
+        time.sleep(i * 1.5)  # gentle stagger so requests don't all hit at once
+        return generate_image(prompt, i)
+
+    results: dict[int, Path] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_staggered, p, i): i for i, p in enumerate(prompts)}
+        for future in futures:
+            i = futures[future]
+            path = future.result()
+            if path:
+                print(f"[image] saved scene {i}: {path.name}")
+                results[i] = path
+    # Preserve scene order for a coherent slideshow.
+    return [results[i] for i in sorted(results)]
 
 
 if __name__ == "__main__":
