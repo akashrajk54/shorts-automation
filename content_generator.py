@@ -46,12 +46,15 @@ Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
   "tags": ["8-12", "lowercase", "hashtag-free", "keywords"],
   "hashtags": ["5-8", "#shorts", "#relevant", "#viral", "hashtags with the # sign"],
   "image_prompts": [
-    "4 detailed AI image-generation prompts, one per scene, that visually match",
-    "the narration. Each: a vivid, modern, high-quality vertical (9:16) image,",
-    "tech/futuristic aesthetic, cinematic lighting, photorealistic, NO text or",
-    "words rendered in the image."
+    "ONE detailed AI image prompt for EVERY sentence of the narration, IN ORDER",
+    "(so if the narration has 6 sentences, return 6 prompts). Each prompt must",
+    "visually match that specific sentence's moment. Vivid, modern, high-quality",
+    "vertical (9:16), cinematic lighting, photorealistic, NO text/words in image."
   ]
 }}
+
+IMPORTANT: 'image_prompts' MUST have exactly ONE entry per sentence in 'narration',
+in the same order.
 """
 
 
@@ -97,12 +100,15 @@ Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
   "tags": ["8-12", "lowercase", "hashtag-free", "keywords"],
   "hashtags": ["5-8", "#shorts", "#relevant", "#viral", "hashtags with the # sign"],
   "image_prompts": [
-    "4 adorable, high-quality vertical (9:16) storybook / 3D-animation style image",
-    "prompts showing a smart little girl and a curious little boy talking, warm",
-    "cozy lighting, cute Pixar-like characters, matching the story scenes,",
-    "NO text or words rendered in the image."
+    "ONE adorable image prompt for EVERY dialogue turn above, IN THE SAME ORDER",
+    "(so the number of image_prompts EQUALS the number of dialogue turns). Each",
+    "depicts that line's moment: a smart little girl and a curious little boy,",
+    "warm cozy lighting, cute Pixar-like 3D characters, vertical (9:16), NO text."
   ]
 }}
+
+IMPORTANT: 'image_prompts' MUST have exactly ONE entry per item in 'dialogue',
+in the same order (same count).
 """
 
 

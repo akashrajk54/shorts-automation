@@ -88,12 +88,12 @@ def run() -> None:
                 f"\U0001F399\ufe0f Recording the story in {language} with two kid voices "
                 f"(girl + boy)..."
             )
-            voice_path, word_segments = generate_dialogue_voice(
+            voice_path, word_segments, scene_segments = generate_dialogue_voice(
                 content["dialogue"], filename=f"voice_{stamp}.mp3"
             )
         else:
             notifier.notify(f"\U0001F399\ufe0f Recording the voiceover in {language}...")
-            voice_path, word_segments = generate_voice(
+            voice_path, word_segments, scene_segments = generate_voice(
                 content["narration"], filename=f"voice_{stamp}.mp3"
             )
         print(f"Voice saved: {voice_path}")

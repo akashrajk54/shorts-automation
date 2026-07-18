@@ -347,13 +347,40 @@ def _mix_background_music(voice: AudioFileClip, duration: float) -> CompositeAud
         return voice
 
 
+def _build_slides(image_paths: list[Path], scene_segments: list[dict],
+                  duration: float, envelope) -> list:
+    """Build Ken Burns slides, one image per scene segment (line/sentence).
+
+    Images are mapped to segments in order; if there are fewer images than
+    segments, images are reused proportionally so the visual still changes
+    at every sentence/line boundary.
+    """
+    n = len(image_paths)
+    if scene_segments:
+        slides, t = [], 0.0
+        m = len(scene_segments)
+        for i, seg in enumerate(scene_segments):
+            img = image_paths[min(n - 1, i * n // m)]
+            d = max(0.1, float(seg.get("duration", duration / m)))
+            slides.append(_ken_burns(img, d, start_time=t, envelope=envelope))
+            t += d
+        return slides
+    # No segment timings: spread images evenly across the whole video.
+    per = duration / n
+    return [
+        _ken_burns(p, per, start_time=idx * per, envelope=envelope)
+        for idx, p in enumerate(image_paths)
+    ]
+
+
 def build_video(narration: str, voice_path: Path, image_paths: list[Path],
-                filename: str = "output.mp4", word_segments: list[dict] = None) -> Path:
+                filename: str = "output.mp4", word_segments: list[dict] = None,
+                scene_segments: list[dict] = None) -> Path:
     """Create the final Shorts MP4 from an AI-image slideshow and return its path.
 
-    If word_segments (per-word timings) are given, captions are rendered as
-    word-by-word karaoke (color-coded per speaker); otherwise the narration is
-    auto-split into timed chunks. Scenes also gently pulse with the voice loudness.
+    - word_segments: per-word timings -> word-by-word karaoke captions.
+    - scene_segments: per-line/sentence timings -> one image per segment, synced.
+    Scenes also gently pulse with the voice loudness.
     """
     out_path = config.OUTPUT_DIR / filename
 
@@ -367,11 +394,7 @@ def build_video(narration: str, voice_path: Path, image_paths: list[Path],
     envelope = _audio_envelope(voice_path)
 
     if image_paths:
-        per = duration / len(image_paths)
-        slides = [
-            _ken_burns(p, per, start_time=idx * per, envelope=envelope)
-            for idx, p in enumerate(image_paths)
-        ]
+        slides = _build_slides(image_paths, scene_segments, duration, envelope)
         bg = concatenate_videoclips(slides, method="compose").set_duration(duration)
     else:
         # Fallback: a soft vertical gradient (nicer than flat black) if no images.
@@ -403,10 +426,10 @@ if __name__ == "__main__":
 
     config.validate()
     demo = "Here are three AI tools that will save you hours every single week."
-    vp, words = generate_voice(demo)
+    vp, words, segs = generate_voice(demo)
     imgs = generate_images([
         "Futuristic AI dashboard glowing on a laptop, cinematic, vertical",
         "Robot hand typing on keyboard, neon blue lighting, vertical",
     ])
-    p = build_video(demo, vp, imgs, word_segments=words)
+    p = build_video(demo, vp, imgs, word_segments=words, scene_segments=segs)
     print(f"Saved: {p}")

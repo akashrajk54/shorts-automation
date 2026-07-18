@@ -72,16 +72,47 @@ async def _synthesize(text: str, out_path: Path, voice: str,
     return words
 
 
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences (handles English + Indic danda '।')."""
+    import re
+    parts = re.split(r"(?<=[.!?।])\s+", text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _sentence_segments(text: str, words: list[dict], speaker: str = "narrator") -> list[dict]:
+    """Group per-word timings into per-sentence segments for image syncing."""
+    sentences = _split_sentences(text)
+    segments: list[dict] = []
+    wi = 0
+    for i, sent in enumerate(sentences):
+        n = len(sent.split())
+        grp = words[wi:wi + n] if n else []
+        wi += n
+        if not grp:
+            continue
+        start = grp[0]["start"]
+        # Last sentence extends to the final word so nothing is left uncovered.
+        end_words = words[-1] if i == len(sentences) - 1 else grp[-1]
+        end = end_words["start"] + end_words["duration"]
+        segments.append({"start": start, "duration": max(0.1, end - start),
+                         "text": sent, "speaker": speaker})
+    return segments
+
+
 def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
                    language: str = None):
-    """Generate an MP3 and return (path, words) with per-word timings for captions."""
+    """Generate an MP3 and return (path, words, segments).
+
+    words = per-word timings (karaoke); segments = per-sentence timings (image sync).
+    """
     if voice is None:
         voice = _voices_for_language(language or config.VIDEO_LANGUAGE)["narrator"]
     out_path = config.OUTPUT_DIR / filename
     words = asyncio.run(_synthesize(text, out_path, voice))
     for w in words:
         w["speaker"] = "narrator"
-    return out_path, words
+    segments = _sentence_segments(text, words) if words else []
+    return out_path, words, segments
 
 
 def _voice_for(speaker: str, language: str = None) -> dict:
@@ -97,8 +128,10 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
                             language: str = None):
     """Synthesize a two-speaker dialogue into one MP3.
 
-    Returns (audio_path, words) where each word is
-    {"text", "speaker", "start", "duration"} (global timings) for karaoke captions.
+    Returns (audio_path, words, segments):
+      words    = per-word timings (karaoke captions),
+      segments = per-dialogue-line timings (one image per line).
+    All timings are global {"text", "speaker", "start", "duration"}.
     """
     from moviepy.editor import AudioFileClip, concatenate_audioclips
 
@@ -107,6 +140,7 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
     tmp_paths: list[Path] = []
     clips = []
     words: list[dict] = []
+    segments: list[dict] = []
     start = 0.0
 
     for i, turn in enumerate(dialogue):
@@ -129,6 +163,9 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
                 "start": start + w["start"],
                 "duration": w["duration"],
             })
+        # One segment (=> one image) per dialogue line.
+        segments.append({"text": line, "speaker": speaker,
+                         "start": start, "duration": duration})
         start += duration
         clips.append(clip)
         tmp_paths.append(tmp)
@@ -148,9 +185,9 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
         except OSError:
             pass
 
-    return out_path, words
+    return out_path, words, segments
 
 
 if __name__ == "__main__":
-    p, words = generate_voice("This is a quick test of the free edge text to speech engine.")
-    print(f"Saved: {p} | {len(words)} word timings")
+    p, words, segs = generate_voice("This is a quick test. It has two sentences today.")
+    print(f"Saved: {p} | {len(words)} words | {len(segs)} segments")
