@@ -116,28 +116,47 @@ def _audio_envelope(voice_path: Path, fps: int = 50):
 
 
 # Script-specific fonts so captions render correctly in non-Latin languages.
+# macOS (_SUP) paths come first for local runs; Linux Noto paths (_NOTO) are
+# appended so the same code renders correctly on cloud runners (CI/servers),
+# where fonts are installed via the fonts-noto* packages.
 _SUP = "/System/Library/Fonts/Supplemental/"
+_NOTO = "/usr/share/fonts/truetype/noto/"
+_NOTO_ALT = "/usr/share/fonts/opentype/noto/"
+
+
+def _noto(*names: str) -> list[str]:
+    """Expand Noto font base names into Bold/Regular paths in both Noto dirs."""
+    out = []
+    for name in names:
+        for d in (_NOTO, _NOTO_ALT):
+            out += [d + name + "-Bold.ttf", d + name + "-Regular.ttf"]
+    return out
+
+
 LANGUAGE_FONTS = {
-    "hindi": [_SUP + "Devanagari Sangam MN.ttc", _SUP + "DevanagariMT.ttc"],
-    "marathi": [_SUP + "Devanagari Sangam MN.ttc", _SUP + "DevanagariMT.ttc"],
-    "bengali": [_SUP + "Bangla Sangam MN.ttc", _SUP + "Bangla MN.ttc"],
-    "tamil": [_SUP + "Tamil Sangam MN.ttc", _SUP + "Tamil MN.ttc"],
-    "telugu": [_SUP + "Telugu Sangam MN.ttc", _SUP + "Telugu MN.ttc"],
-    "gujarati": [_SUP + "Gujarati Sangam MN.ttc"],
-    "kannada": [_SUP + "Kannada Sangam MN.ttc"],
-    "malayalam": [_SUP + "Malayalam Sangam MN.ttc"],
-    "punjabi": [_SUP + "Gurmukhi Sangam MN.ttc"],
-    "arabic": [_SUP + "GeezaPro.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf"],
-    "japanese": ["/System/Library/Fonts/Hiragino Sans GB.ttc"],
-    "chinese": ["/System/Library/Fonts/PingFang.ttc"],
+    "hindi": [_SUP + "Devanagari Sangam MN.ttc", _SUP + "DevanagariMT.ttc"] + _noto("NotoSansDevanagari"),
+    "marathi": [_SUP + "Devanagari Sangam MN.ttc", _SUP + "DevanagariMT.ttc"] + _noto("NotoSansDevanagari"),
+    "bengali": [_SUP + "Bangla Sangam MN.ttc", _SUP + "Bangla MN.ttc"] + _noto("NotoSansBengali"),
+    "tamil": [_SUP + "Tamil Sangam MN.ttc", _SUP + "Tamil MN.ttc"] + _noto("NotoSansTamil"),
+    "telugu": [_SUP + "Telugu Sangam MN.ttc", _SUP + "Telugu MN.ttc"] + _noto("NotoSansTelugu"),
+    "gujarati": [_SUP + "Gujarati Sangam MN.ttc"] + _noto("NotoSansGujarati"),
+    "kannada": [_SUP + "Kannada Sangam MN.ttc"] + _noto("NotoSansKannada"),
+    "malayalam": [_SUP + "Malayalam Sangam MN.ttc"] + _noto("NotoSansMalayalam"),
+    "punjabi": [_SUP + "Gurmukhi Sangam MN.ttc"] + _noto("NotoSansGurmukhi"),
+    "arabic": [_SUP + "GeezaPro.ttc", _SUP + "Arial.ttf"] + _noto("NotoSansArabic", "NotoNaskhArabic"),
+    "japanese": ["/System/Library/Fonts/Hiragino Sans GB.ttc", _NOTO_ALT + "NotoSansCJK-Bold.ttc"],
+    "chinese": ["/System/Library/Fonts/PingFang.ttc", _NOTO_ALT + "NotoSansCJK-Bold.ttc"],
 }
 
-# Latin bold fonts used for English + as the final fallback.
+# Latin bold fonts used for English + as the final fallback (macOS then Linux).
 _LATIN_FONTS = [
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     "/System/Library/Fonts/Helvetica.ttc",
     "/Library/Fonts/Arial Bold.ttf",
     "/System/Library/Fonts/Supplemental/Impact.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    _NOTO + "NotoSans-Bold.ttf",
 ]
 
 

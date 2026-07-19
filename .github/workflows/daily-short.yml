@@ -1,0 +1,81 @@
+name: Daily YouTube Short
+
+# Runs the whole pipeline on a schedule (free on GitHub Actions) and can also
+# be triggered manually from the Actions tab ("Run workflow").
+on:
+  schedule:
+    # 03:30 UTC == 09:00 AM IST every day. Cron is ALWAYS in UTC.
+    # Edit this to your preferred time. Format: "min hour day month weekday".
+    - cron: "30 3 * * *"
+  workflow_dispatch: {}
+
+# Avoid two runs overlapping if a previous one is still going.
+concurrency:
+  group: daily-short
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # allows committing history.json back to remember past topics
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # --- Secrets (add these under Settings -> Secrets and variables -> Actions) ---
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      # --- Config (override via repo Variables if you like) ---
+      VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'hindi' }}
+      PROMPT_STYLE: ${{ vars.PROMPT_STYLE || 'story' }}
+      NICHE: ${{ vars.NICHE || 'AI tools and tech tips' }}
+      AUTO_UPLOAD: "true"
+      YOUTUBE_PRIVACY: ${{ vars.YOUTUBE_PRIVACY || 'public' }}
+      BACKGROUND_MUSIC: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ffmpeg + fonts (Devanagari/Indic/CJK for captions)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg fonts-dejavu-core fonts-noto-core fonts-noto-cjk
+          sudo fc-cache -f
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Write YouTube OAuth files from secrets
+        env:
+          CLIENT_SECRET_JSON: ${{ secrets.CLIENT_SECRET_JSON }}
+          TOKEN_JSON: ${{ secrets.TOKEN_JSON }}
+        run: |
+          printf '%s' "$CLIENT_SECRET_JSON" > client_secret.json
+          printf '%s' "$TOKEN_JSON" > token.json
+          test -s client_secret.json || (echo "client_secret.json empty; set CLIENT_SECRET_JSON secret" && exit 1)
+          test -s token.json || (echo "token.json empty; set TOKEN_JSON secret" && exit 1)
+
+      - name: Generate, build, and upload the Short
+        run: python main.py
+
+      - name: Persist topic history (so themes don't repeat)
+        if: always()
+        run: |
+          if [ -f history.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -f history.json
+            git commit -m "chore: update topic history [skip ci]" || echo "no history changes"
+            git push || echo "history push skipped"
+          fi
