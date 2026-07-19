@@ -107,8 +107,8 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
                     continue
                 resp.raise_for_status()
                 ctype = resp.headers.get("content-type", "")
-                if ctype.startswith("image") and _is_valid_image(resp.content):
-                    dest.write_bytes(resp.content)
+                if ctype.startswith("image") and _is_valid_image(resp.content) \
+                        and _save_as_rgb(resp.content, dest):
                     print(f"[image] scene {index}: ok via {provider['model']}"
                           f"{'+enhance' if provider['enhance'] else ''} in {time.time() - start:.1f}s")
                     return dest
@@ -133,12 +133,29 @@ def _keywords(prompt: str, n: int = 6) -> str:
     return " ".join(words[:n]) or "technology"
 
 
+def _save_as_rgb(data: bytes, dest: Path) -> bool:
+    """Re-encode image bytes to a 3-channel RGB JPEG.
+
+    Fallback sources (Wikimedia/Openverse/Picsum/Pexels) may return grayscale,
+    palette, CMYK or RGBA images. MoviePy needs 3-channel RGB frames, otherwise
+    compositing fails with 'could not broadcast (H,W) into (H,W,3)'. Converting
+    here guarantees every saved frame is RGB regardless of the source format.
+    """
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        img.save(dest, format="JPEG", quality=90)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _download_valid(img_url: str, dest: Path, timeout: int) -> bool:
-    """Download a URL and keep it only if it is a real, complete image."""
+    """Download a URL and keep it only if it is a real, complete image (RGB)."""
     try:
         data = requests.get(img_url, headers={"User-Agent": _API_UA}, timeout=timeout).content
-        if _is_valid_image(data):
-            dest.write_bytes(data)
+        if _is_valid_image(data) and _save_as_rgb(data, dest):
             return True
     except requests.RequestException:
         pass
