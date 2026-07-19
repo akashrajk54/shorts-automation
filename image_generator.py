@@ -256,16 +256,18 @@ def _picsum_image(prompt: str, index: int, seed: int | None = None) -> Path | No
     return None
 
 
-# Fallback order (only reached if Pollinations AI generation fails):
-#   1. Pexels  - the "earlier" key-based source. Best prompt match, but only runs
-#      if PEXELS_API_KEY is set; otherwise it self-skips instantly (returns None),
-#      so the pipeline still works with no keys at all.
-#   2. Wikimedia Commons - keyless, keyword-relevant, reliable from cloud IPs.
-#   3. Openverse - keyless, keyword-relevant.
-#   4. Picsum - keyless, always-available backstop so we never ship a gradient.
-# This means: earlier (key-based) version is preferred when a key is provided;
-# without a key it falls straight through to the current keyless version.
-_FALLBACK_SOURCES = (_pexels_image, _wikimedia_image, _openverse_image, _picsum_image)
+# Fallback order (only reached if Pollinations AI generation fails).
+# LICENSING: for PUBLIC uploads we only use sources that permit commercial reuse
+# with NO attribution required, so nothing on the channel violates a licence:
+#   1. Pexels  - Pexels Licence (free commercial use, no attribution). Only runs
+#      if PEXELS_API_KEY is set; otherwise it self-skips (pipeline still works).
+#   2. Picsum  - Unsplash Licence (free commercial use, no attribution). Always
+#      available, so we never ship a blank/gradient frame.
+# NOTE: Wikimedia Commons and Openverse are intentionally NOT used here because
+# their images are typically CC-BY / CC-BY-SA, which require attribution (and
+# share-alike) - unsafe for a monetisable public channel. The functions remain
+# defined below in case you ever want an attribution-tracked, private build.
+_FALLBACK_SOURCES = (_pexels_image, _picsum_image)
 
 
 def _fallback_image(prompt: str, index: int, seed: int | None = None) -> Path | None:

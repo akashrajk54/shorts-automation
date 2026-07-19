@@ -13,6 +13,13 @@ voiceover (looped or trimmed to the video length, with fade in/out).
 - **YouTube Audio Library** — https://youtube.com/audiolibrary (free)
 - **Free Music Archive** — https://freemusicarchive.org (check each license)
 
+## ⚠️ IMPORTANT for PUBLIC uploads
+Only add music you are **legally allowed to use commercially**. Never drop in
+copyrighted/label songs — on a public channel that triggers **Content ID claims
+or copyright strikes**, which can demonetise or take down videos and, if
+repeated, terminate the channel. Prefer CC0 / "no attribution required" tracks
+(e.g. Pixabay, YouTube Audio Library tracks marked "no attribution").
+
 For the two-kids **story** style, pick something soft, warm, and playful
 (e.g. "cute", "kids", "acoustic", "lo-fi", "ukulele").
 

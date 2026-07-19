@@ -10,6 +10,15 @@ from googleapiclient.http import MediaFileUpload
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
+# Appended to every description so viewers (and YouTube) know the media is
+# AI-assisted. YouTube requires disclosing synthetic/altered content; this keeps
+# the channel transparent and policy-compliant for public uploads.
+AI_DISCLOSURE = (
+    "\n\n\u2014\nDisclosure: This video was created with the help of AI "
+    "(AI-generated voiceover, images, and script). Stock visuals are used under "
+    "royalty-free licences (Pexels / Unsplash)."
+)
+
 
 def _get_credentials() -> Credentials:
     creds = None
@@ -41,10 +50,11 @@ def upload_video(video_path: Path, title: str, description: str,
     creds = _get_credentials()
     youtube = build("youtube", "v3", credentials=creds)
 
+    full_description = (description or "").rstrip() + AI_DISCLOSURE
     body = {
         "snippet": {
             "title": title[:100],
-            "description": description,
+            "description": full_description[:5000],  # YouTube description hard limit
             "tags": tags,
             "categoryId": "28",  # Science & Technology
         },
