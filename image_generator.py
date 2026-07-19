@@ -239,15 +239,25 @@ def _picsum_image(prompt: str, index: int, seed: int | None = None) -> Path | No
     return None
 
 
-# Tried in order. Keyless + relevant first (Wikimedia is verified reliable from
-# cloud IPs), then Openverse, then optional Pexels (only if a key is set), and
-# finally Picsum as an always-available backstop so we never fall to a gradient.
-_FALLBACK_SOURCES = (_wikimedia_image, _openverse_image, _pexels_image, _picsum_image)
+# Fallback order (only reached if Pollinations AI generation fails):
+#   1. Pexels  - the "earlier" key-based source. Best prompt match, but only runs
+#      if PEXELS_API_KEY is set; otherwise it self-skips instantly (returns None),
+#      so the pipeline still works with no keys at all.
+#   2. Wikimedia Commons - keyless, keyword-relevant, reliable from cloud IPs.
+#   3. Openverse - keyless, keyword-relevant.
+#   4. Picsum - keyless, always-available backstop so we never ship a gradient.
+# This means: earlier (key-based) version is preferred when a key is provided;
+# without a key it falls straight through to the current keyless version.
+_FALLBACK_SOURCES = (_pexels_image, _wikimedia_image, _openverse_image, _picsum_image)
 
 
 def _fallback_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
     for source in _FALLBACK_SOURCES:
-        path = source(prompt, index, seed=seed)
+        try:
+            path = source(prompt, index, seed=seed)
+        except Exception as exc:  # noqa: BLE001  (never let one source break the chain)
+            print(f"[image] scene {index}: {source.__name__} errored: {exc}")
+            path = None
         if path:
             return path
     return None
