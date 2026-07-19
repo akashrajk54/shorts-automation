@@ -116,12 +116,17 @@ def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
 
 
 def _voice_for(speaker: str, language: str = None) -> dict:
-    """Return {voice, rate, pitch} for a story speaker in the given language."""
+    """Return {voice, rate, pitch} for a story speaker in the given language.
+
+    Tuned so the two speakers sound like real young North-Indian (Delhi) kids
+    chatting in natural Hindi: brighter pitch, slightly quicker, playful pace.
+    """
     voices = _voices_for_language(language or config.VIDEO_LANGUAGE)
     if str(speaker).lower().startswith("b"):
-        # Boy: male voice pitched up to sound like a little boy.
-        return {"voice": voices["boy"], "rate": "+6%", "pitch": "+35Hz"}
-    return {"voice": voices["girl"], "rate": "+8%", "pitch": "+0Hz"}
+        # Boy: male Hindi voice pitched well up + a touch faster => little boy.
+        return {"voice": voices["boy"], "rate": "+10%", "pitch": "+45Hz"}
+    # Girl: female Hindi voice brightened + livelier => sweet little girl.
+    return {"voice": voices["girl"], "rate": "+13%", "pitch": "+30Hz"}
 
 
 def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",

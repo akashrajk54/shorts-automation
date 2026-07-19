@@ -144,6 +144,14 @@ def generate_content(niche: str = None, style: str = None, language: str = None)
         f"'hashtags' stay relevant and MUST include #shorts. IMPORTANT: keep 'image_prompts' "
         f"in ENGLISH always (the image model needs English).\n\n"
     )
+    if language.lower() == "hindi":
+        lang_directive += (
+            "HINDI STYLE: Write the way real, everyday North-Indian (Delhi) kids actually "
+            "talk \u2014 warm, playful, simple spoken Hindi (Devanagari). It's natural to keep "
+            "common English tech words (app, phone, AI, tool names) in English as kids do, "
+            "but keep the sentences clean, correct and easy for a child to say. Avoid heavy, "
+            "bookish or Sanskritised words.\n\n"
+        )
     template = STORY_PROMPT_TEMPLATE if style == "story" else TIPS_PROMPT_TEMPLATE
     prompt = lang_directive + template.format(
         niche=niche, trends=trends_block, history=history_block

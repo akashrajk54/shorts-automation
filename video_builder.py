@@ -10,7 +10,6 @@ from moviepy.editor import (
     CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
-    concatenate_videoclips,
 )
 from PIL import Image, ImageDraw, ImageFont
 
@@ -25,22 +24,67 @@ def _fit_cover(clip: ImageClip) -> ImageClip:
     return clip.resize(ratio)
 
 
+# Ken Burns motion presets cycled per scene so consecutive shots feel alive
+# and never repeat the same move. Each: (zoom_direction, pan_x, pan_y) where the
+# pan values are the START and END offset as a fraction of the pan amplitude.
+_MOTION_PRESETS = [
+    ("in",  (-1.0, 1.0), (0.0, 0.0)),    # zoom in,  pan left -> right
+    ("out", (1.0, -1.0), (0.0, 0.0)),    # zoom out, pan right -> left
+    ("in",  (0.0, 0.0), (-1.0, 1.0)),    # zoom in,  pan up -> down
+    ("out", (0.0, 0.0), (1.0, -1.0)),    # zoom out, pan down -> up
+    ("in",  (-1.0, 1.0), (-1.0, 1.0)),   # zoom in,  diagonal ↘
+    ("out", (1.0, -1.0), (1.0, -1.0)),   # zoom out, diagonal ↖
+]
+_OVERSCALE = 1.18   # extra headroom so panning never reveals frame edges
+_PAN_AMP = 0.05     # max pan as a fraction of the frame (kept inside overscale)
+_ZOOM_AMP = 0.07    # how much the slow zoom travels over the shot
+
+
 def _ken_burns(image_path: Path, duration: float, start_time: float = 0.0,
-               envelope=None, zoom: float = 0.10, pulse: float = 0.05) -> CompositeVideoClip:
-    """Slow Ken Burns zoom that also gently PULSES with the voice's loudness."""
-    base = ImageClip(str(image_path)).set_duration(duration)
-    base = _fit_cover(base)
+               envelope=None, motion_idx: int = 0, pulse: float = 0.05) -> CompositeVideoClip:
+    """Cinematic Ken Burns move (varied zoom + directional pan) that also gently
+    PULSES with the voice's loudness. Overscaled so panning never shows edges."""
+    W, H = config.VIDEO_WIDTH, config.VIDEO_HEIGHT
+    zoom_dir, (px0, px1), (py0, py1) = _MOTION_PRESETS[motion_idx % len(_MOTION_PRESETS)]
+
+    base = _fit_cover(ImageClip(str(image_path)).set_duration(duration)).resize(_OVERSCALE)
+    base_w, base_h = base.w, base.h
+    pan_x = _PAN_AMP * W
+    pan_y = _PAN_AMP * H
 
     def scale(t):
-        s = 1 + zoom * (t / max(duration, 0.1))
+        p = t / max(duration, 0.1)
+        z = (1.0 + _ZOOM_AMP * p) if zoom_dir == "in" else (1.0 + _ZOOM_AMP * (1 - p))
         if envelope is not None:
-            s += pulse * envelope(start_time + t)  # louder speech -> slightly bigger
-        return s
+            z += pulse * envelope(start_time + t)  # louder speech -> slightly bigger
+        return z
 
-    zoomed = base.resize(scale).set_position(("center", "center"))
-    return CompositeVideoClip(
-        [zoomed], size=(config.VIDEO_WIDTH, config.VIDEO_HEIGHT)
-    ).set_duration(duration)
+    def position(t):
+        p = t / max(duration, 0.1)
+        s = scale(t)
+        cur_w, cur_h = base_w * s, base_h * s
+        dx = pan_x * (px0 + (px1 - px0) * p)
+        dy = pan_y * (py0 + (py1 - py0) * p)
+        return ((W - cur_w) / 2 + dx, (H - cur_h) / 2 + dy)
+
+    moving = base.resize(scale).set_position(position)
+    return CompositeVideoClip([moving], size=(W, H)).set_duration(duration)
+
+
+def _vignette_overlay() -> np.ndarray:
+    """A soft edge vignette + bottom scrim so captions stay readable on any image."""
+    W, H = config.VIDEO_WIDTH, config.VIDEO_HEIGHT
+    ys, xs = np.mgrid[0:H, 0:W]
+    cx, cy = W / 2, H / 2
+    # Radial vignette: 0 at center, growing toward the corners.
+    r = np.sqrt(((xs - cx) / cx) ** 2 + ((ys - cy) / cy) ** 2)
+    vig = np.clip((r - 0.6) / 0.8, 0, 1) * 90        # up to ~90 alpha at corners
+    # Bottom scrim: darken the lower third where captions sit.
+    band = np.clip((ys - H * 0.6) / (H * 0.4), 0, 1) ** 1.5 * 150
+    alpha = np.clip(vig + band, 0, 200).astype(np.uint8)
+    overlay = np.zeros((H, W, 4), dtype=np.uint8)
+    overlay[..., 3] = alpha                          # black with graded alpha
+    return overlay
 
 
 def _audio_envelope(voice_path: Path, fps: int = 50):
@@ -143,18 +187,42 @@ def _segment_narration(text: str, max_words: int = 5) -> list[str]:
     return segments or [text]
 
 
+# --- Caption layout (kept inside the vertical safe zone) ---
+CAPTION_MARGIN = 100                 # side margin (avoids Shorts' right-hand buttons)
+CAPTION_CENTER_Y = 0.66              # block centre: lower third, above the bottom UI
+CAPTION_STROKE = 4                   # lighter stroke; the panel provides contrast
+CAPTION_MAX_FONT = 88
+CAPTION_PANEL_FILL = (0, 0, 0, 150)  # semi-transparent dark panel behind text
+
+
+def _draw_caption_panel(draw: ImageDraw.ImageDraw, widest: float,
+                        block_top: int, block_height: int) -> None:
+    """Draw a rounded, semi-transparent panel behind the caption text so it is
+    always legible over the image without hiding it."""
+    pad_x, pad_y, radius = 48, 28, 40
+    left = int((config.VIDEO_WIDTH - widest) / 2) - pad_x
+    right = int((config.VIDEO_WIDTH + widest) / 2) + pad_x
+    top = block_top - pad_y
+    bottom = block_top + block_height + pad_y
+    try:
+        draw.rounded_rectangle([left, top, right, bottom], radius=radius,
+                               fill=CAPTION_PANEL_FILL)
+    except AttributeError:  # very old Pillow without rounded_rectangle
+        draw.rectangle([left, top, right, bottom], fill=CAPTION_PANEL_FILL)
+
+
 def _render_caption_image(text: str, duration: float, color: str = "white") -> ImageClip:
-    """Render one centered, stroked caption chunk that always fits the frame."""
-    margin = 90
+    """Render one centered caption chunk on a readable panel that fits the frame."""
+    margin = CAPTION_MARGIN
     max_width = config.VIDEO_WIDTH - 2 * margin
-    max_block_height = int(config.VIDEO_HEIGHT * 0.35)
-    stroke = 6
+    max_block_height = int(config.VIDEO_HEIGHT * 0.30)
+    stroke = CAPTION_STROKE
 
     img = Image.new("RGBA", (config.VIDEO_WIDTH, config.VIDEO_HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     # Auto-shrink the font until the wrapped block fits width and height.
-    font_size = 96
+    font_size = CAPTION_MAX_FONT
     while font_size >= 40:
         font = _load_font(font_size)
         lines = _wrap_by_pixels(draw, text, font, max_width, stroke)
@@ -168,8 +236,9 @@ def _render_caption_image(text: str, duration: float, color: str = "white") -> I
             break
         font_size -= 6
 
-    # Vertically center the block around 68% of the height (lower third).
-    start_y = int(config.VIDEO_HEIGHT * 0.68) - block_height // 2
+    # Vertically center the block in the lower third (above the bottom UI).
+    start_y = int(config.VIDEO_HEIGHT * CAPTION_CENTER_Y) - block_height // 2
+    _draw_caption_panel(draw, widest, start_y, block_height)
     y = start_y
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font, stroke_width=stroke)
@@ -215,17 +284,17 @@ def _layout_words(draw, words: list[str], font, max_width: int):
 
 
 def _render_karaoke_image(words: list[str], active_idx: int, base_color: str) -> np.ndarray:
-    """Render a group of words centered, with the active word highlighted."""
-    margin = 90
+    """Render a group of words centered on a readable panel, active word highlighted."""
+    margin = CAPTION_MARGIN
     max_width = config.VIDEO_WIDTH - 2 * margin
-    max_block_height = int(config.VIDEO_HEIGHT * 0.35)
-    stroke = 6
+    max_block_height = int(config.VIDEO_HEIGHT * 0.30)
+    stroke = CAPTION_STROKE
 
     img = Image.new("RGBA", (config.VIDEO_WIDTH, config.VIDEO_HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     # Auto-shrink until the wrapped block fits.
-    font_size = 96
+    font_size = CAPTION_MAX_FONT
     while font_size >= 40:
         font = _load_font(font_size)
         lines = _layout_words(draw, words, font, max_width)
@@ -240,7 +309,8 @@ def _render_karaoke_image(words: list[str], active_idx: int, base_color: str) ->
         font_size -= 6
 
     space_w = draw.textlength(" ", font=font)
-    start_y = int(config.VIDEO_HEIGHT * 0.68) - block_height // 2
+    start_y = int(config.VIDEO_HEIGHT * CAPTION_CENTER_Y) - block_height // 2
+    _draw_caption_panel(draw, widest, start_y, block_height)
     y = start_y
     for line in lines:
         line_w = sum(draw.textlength(w, font=font) for w, _ in line) + space_w * (len(line) - 1)
@@ -347,30 +417,40 @@ def _mix_background_music(voice: AudioFileClip, duration: float) -> CompositeAud
         return voice
 
 
-def _build_slides(image_paths: list[Path], scene_segments: list[dict],
-                  duration: float, envelope) -> list:
-    """Build Ken Burns slides, one image per scene segment (line/sentence).
+_SCENE_XFADE = 0.45  # seconds of crossfade between consecutive scenes
 
-    Images are mapped to segments in order; if there are fewer images than
-    segments, images are reused proportionally so the visual still changes
-    at every sentence/line boundary.
+
+def _build_slides(image_paths: list[Path], scene_segments: list[dict],
+                  duration: float, envelope) -> CompositeVideoClip:
+    """Build the moving-image background: one Ken Burns shot per scene segment
+    (line/sentence), cross-faded together and aligned to the voice timeline.
+
+    Images map to segments in order; with fewer images than segments they are
+    reused proportionally so the visual still changes at every boundary.
     """
     n = len(image_paths)
-    if scene_segments:
-        slides, t = [], 0.0
-        m = len(scene_segments)
-        for i, seg in enumerate(scene_segments):
-            img = image_paths[min(n - 1, i * n // m)]
-            d = max(0.1, float(seg.get("duration", duration / m)))
-            slides.append(_ken_burns(img, d, start_time=t, envelope=envelope))
-            t += d
-        return slides
-    # No segment timings: spread images evenly across the whole video.
-    per = duration / n
-    return [
-        _ken_burns(p, per, start_time=idx * per, envelope=envelope)
-        for idx, p in enumerate(image_paths)
-    ]
+    if not scene_segments:
+        seg_d = duration / n
+        scene_segments = [{"start": i * seg_d, "duration": seg_d} for i in range(n)]
+    m = len(scene_segments)
+
+    slides = []
+    for i, seg in enumerate(scene_segments):
+        img = image_paths[min(n - 1, i * n // m)]
+        start = float(seg.get("start", i * duration / m))
+        seg_dur = max(0.2, float(seg.get("duration", duration / m)))
+        lead = _SCENE_XFADE if i > 0 else 0.0
+        clip_start = max(0.0, start - lead)          # begin the fade before the line
+        clip_dur = seg_dur + lead
+        kb = _ken_burns(img, clip_dur, start_time=clip_start,
+                        envelope=envelope, motion_idx=i)
+        if i > 0:
+            kb = kb.crossfadein(_SCENE_XFADE)
+        slides.append(kb.set_start(clip_start))
+
+    return CompositeVideoClip(
+        slides, size=(config.VIDEO_WIDTH, config.VIDEO_HEIGHT)
+    ).set_duration(duration)
 
 
 def build_video(narration: str, voice_path: Path, image_paths: list[Path],
@@ -394,11 +474,13 @@ def build_video(narration: str, voice_path: Path, image_paths: list[Path],
     envelope = _audio_envelope(voice_path)
 
     if image_paths:
-        slides = _build_slides(image_paths, scene_segments, duration, envelope)
-        bg = concatenate_videoclips(slides, method="compose").set_duration(duration)
+        bg = _build_slides(image_paths, scene_segments, duration, envelope)
     else:
         # Fallback: a soft vertical gradient (nicer than flat black) if no images.
         bg = ImageClip(_gradient_bg()).set_duration(duration)
+
+    # Cinematic vignette + bottom scrim: adds depth and keeps captions readable.
+    vignette = ImageClip(_vignette_overlay(), transparent=True).set_duration(duration)
 
     if word_segments:
         caption_clips = _make_karaoke_clips(word_segments, duration)
@@ -406,7 +488,7 @@ def build_video(narration: str, voice_path: Path, image_paths: list[Path],
         caption_clips = _make_caption_clips(narration, duration)
 
     final_audio = _mix_background_music(audio, duration)
-    final = CompositeVideoClip([bg, *caption_clips]).set_audio(final_audio)
+    final = CompositeVideoClip([bg, vignette, *caption_clips]).set_audio(final_audio)
     final = final.set_duration(duration)
 
     final.write_videofile(
