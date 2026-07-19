@@ -86,7 +86,10 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
             }
             token = getattr(config, "POLLINATIONS_TOKEN", "")
             if token:
-                params["token"] = token  # also send as query param (belt + braces)
+                # Send under both param names for compatibility: newer Pollinations
+                # uses ?key=, older builds used ?token= (Bearer header also set).
+                params["key"] = token
+                params["token"] = token
             if provider["enhance"]:
                 params["enhance"] = "true"
             try:
