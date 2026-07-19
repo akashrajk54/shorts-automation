@@ -1,5 +1,6 @@
 """Generate a short-form video script + metadata using Google Gemini (free tier)."""
 import json
+import random
 import re
 
 import config  # noqa: F401  (imported first to configure SSL trust)
@@ -61,15 +62,18 @@ in the same order.
 STORY_PROMPT_TEMPLATE = """You are a beloved children's story writer AND a viral YouTube Shorts
 creator for the niche: "{niche}".
 
-Write ONE short, heart-warming STORY in the form of a natural conversation between
+Write ONE short, delightful STORY in the form of a natural conversation between
 TWO cute little kids:
 - a smart, sweet, confident GIRL (she is knowledgeable and kindly teaches),
-- a curious, funny, slightly clueless BOY (he asks questions and learns).
+- a curious, funny BOY (he asks questions and learns).
 
 The girl teaches the boy something genuinely USEFUL about being smart with AI -
 a specific, real, accurate AI tool or trick. It must feel like a lovable little
 story that is a joy to listen to: warm, playful, wholesome, and easy to follow -
 while still delivering COMPLETE, correct, useful information the viewer can act on.
+
+FRESHNESS DIRECTIVE FOR TODAY (follow this to make the story feel NEW, not a repeat):
+{variety}
 
 Today's CURRENTLY TRENDING topics/headlines (use for inspiration, pick the most
 relevant + genuinely useful AI angle; ignore irrelevant ones):
@@ -85,6 +89,13 @@ RULES:
 - Kids talk naturally and adorably (short sentences, contractions, a little humor),
   but the ACTUAL tip must be specific and complete: NAME the real AI tool and say
   exactly WHAT it does and HOW to use it. No vague "this tool" without naming it.
+- VARIETY IS CRITICAL: do NOT reuse the same setup every time. AVOID the tired
+  "the boy is sad / upset / stuck and the girl cheers him up" opening. Instead use
+  the mood, setting and hook given in the FRESHNESS DIRECTIVE above. Open with a
+  fresh hook (a funny mistake, an exciting discovery, a playful challenge, a "guess
+  what I just did!", a mini competition, a curious question) - NOT with sadness.
+- Use the two kid NAMES given in the FRESHNESS DIRECTIVE (don't default to the same
+  names every time).
 - End on a happy, satisfying takeaway from the boy (he "gets it") + a tiny call to action.
 - Use ONLY real, accurate tools/facts. Never invent fake tools or claims.
 
@@ -110,6 +121,51 @@ Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
 IMPORTANT: 'image_prompts' MUST have exactly ONE entry per item in 'dialogue',
 in the same order (same count).
 """
+
+
+# --- Story variety pools: randomly combined so each story feels fresh ---
+_STORY_NAMES = [
+    ("Pari", "Aarav"), ("Riya", "Kabir"), ("Anaya", "Vivaan"), ("Meera", "Reyansh"),
+    ("Saanvi", "Aryan"), ("Diya", "Ishaan"), ("Kiara", "Advik"), ("Myra", "Krish"),
+    ("Aadhya", "Dhruv"), ("Navya", "Arjun"), ("Ira", "Veer"), ("Tara", "Kian"),
+]
+_STORY_MOODS = [
+    "cheerful and excited", "playful and giggly", "curious and amazed",
+    "competitive and fun", "proud and show-offy (in a cute way)",
+    "mischievous and clever", "wide-eyed and wonder-struck", "energetic and bubbly",
+]
+_STORY_SETTINGS = [
+    "on the school playground during recess", "in a cozy bedroom full of toys",
+    "on a rooftop flying a kite", "at a birthday party", "in the school computer lab",
+    "under a tree in the park", "at a lemonade stand they set up", "in a treehouse",
+    "on the way home from school", "in grandma's sunny kitchen", "at a science fair booth",
+    "during a rainy afternoon indoors",
+]
+_STORY_HOOKS = [
+    "the girl excitedly shows off something cool she just made with AI",
+    "the boy proudly shares a small win and the girl levels it up with a smart AI trick",
+    "they turn it into a friendly challenge to see who can do a task faster",
+    "the boy asks a funny 'what if' question that leads into the AI tip",
+    "the girl surprises the boy with a magic-seeming demo, then reveals the real tool",
+    "they're planning a fun project together and need the AI tool to pull it off",
+    "the boy makes a silly mistake, they laugh, and the girl shows the smarter way",
+    "the girl bets she can do something impressive, then teaches how",
+]
+
+
+def _story_variety() -> str:
+    """Pick a fresh name pair, mood, setting and hook so stories don't repeat."""
+    girl, boy = random.choice(_STORY_NAMES)
+    mood = random.choice(_STORY_MOODS)
+    setting = random.choice(_STORY_SETTINGS)
+    hook = random.choice(_STORY_HOOKS)
+    return (
+        f"- Girl's name: {girl}. Boy's name: {boy} (use these names).\n"
+        f"- Overall mood/tone: {mood}.\n"
+        f"- Setting/scene: {setting}.\n"
+        f"- Opening hook to build the story around: {hook}.\n"
+        f"- Keep it upbeat from the very first line - NO sadness/crying openings."
+    )
 
 
 def _extract_json(text: str) -> dict:
@@ -154,7 +210,8 @@ def generate_content(niche: str = None, style: str = None, language: str = None)
         )
     template = STORY_PROMPT_TEMPLATE if style == "story" else TIPS_PROMPT_TEMPLATE
     prompt = lang_directive + template.format(
-        niche=niche, trends=trends_block, history=history_block
+        niche=niche, trends=trends_block, history=history_block,
+        variety=_story_variety(),
     )
     response = model.generate_content(prompt)
     data = _extract_json(response.text)

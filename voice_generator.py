@@ -4,6 +4,7 @@ from pathlib import Path
 
 import config  # noqa: F401  (imported first to configure SSL trust before edge_tts)
 import edge_tts
+import numpy as np
 
 # The most natural, human-sounding English voices from edge-tts.
 # Multilingual neural voices sound noticeably more lifelike and expressive.
@@ -129,6 +130,28 @@ def _voice_for(speaker: str, language: str = None) -> dict:
     return {"voice": voices["girl"], "rate": "+13%", "pitch": "+30Hz"}
 
 
+def _speech_end(clip, tail: float = 0.05) -> float:
+    """Return the timestamp where actual speech ends, so we can drop the long
+    trailing silence edge-tts pads onto each line. Keeps a small `tail` so words
+    aren't clipped. Falls back to the full duration if analysis fails."""
+    try:
+        chunks = list(clip.iter_chunks(fps=22050, quantize=False, nbytes=2, chunksize=22050))
+        arr = np.concatenate(chunks, axis=0)
+    except Exception:  # noqa: BLE001
+        return clip.duration
+    if arr.ndim > 1:
+        arr = arr.mean(axis=1)
+    amp = np.abs(arr)
+    peak = amp.max()
+    if peak <= 0:
+        return clip.duration
+    idx = np.where(amp > peak * 0.02)[0]  # 2% of peak = speech threshold
+    if len(idx) == 0:
+        return clip.duration
+    end = (idx[-1] + 1) / 22050 + tail
+    return float(min(clip.duration, max(0.2, end)))
+
+
 def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
                             language: str = None):
     """Synthesize a two-speaker dialogue into one MP3.
@@ -159,7 +182,9 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
             _synthesize(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"])
         )
         clip = AudioFileClip(str(tmp))
-        duration = max(0.1, clip.duration - 0.03)  # trim a hair to avoid mp3 over-read
+        # Trim the long trailing silence edge-tts pads on, so the gap when the
+        # voice switches (girl <-> boy) stays short and snappy.
+        duration = _speech_end(clip)
         clip = clip.subclip(0, duration)
         for w in line_words:
             words.append({
