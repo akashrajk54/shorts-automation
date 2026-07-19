@@ -118,26 +118,39 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
                 print(f"[image] scene {index} ({provider['model']}) try {retry + 1} failed: {exc}")
             time.sleep(2)
     print(f"[image] scene {index}: all Pollinations providers failed")
-    # Free fallback: Pexels stock photo (reliable from cloud IPs, no Pollen).
-    fallback = _pexels_image(prompt, index, seed=base_seed)
-    if fallback:
-        return fallback
-    return None
+    return _fallback_image(prompt, index, base_seed)
 
 
-def _pexels_query(prompt: str) -> str:
-    """Turn a long AI-art prompt into a short keyword query Pexels understands."""
+# --- Free, KEYLESS image fallbacks (work from cloud/CI IPs, zero signup) ---
+# A descriptive UA is required by Wikimedia and appreciated by the others.
+_API_UA = "shorts-automation/1.0 (+https://github.com/akashrajk54/shorts-automation)"
+
+
+def _keywords(prompt: str, n: int = 6) -> str:
+    """Reduce a long AI-art prompt to a short keyword query for stock/CC search."""
     first_clause = prompt.split(",")[0]  # drop the quality suffix / extra clauses
     words = [w for w in first_clause.split() if w.isalpha() and len(w) > 2]
-    return " ".join(words[:6]) or "technology"
+    return " ".join(words[:n]) or "technology"
+
+
+def _download_valid(img_url: str, dest: Path, timeout: int) -> bool:
+    """Download a URL and keep it only if it is a real, complete image."""
+    try:
+        data = requests.get(img_url, headers={"User-Agent": _API_UA}, timeout=timeout).content
+        if _is_valid_image(data):
+            dest.write_bytes(data)
+            return True
+    except requests.RequestException:
+        pass
+    return False
 
 
 def _pexels_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
-    """Download one vertical stock photo from Pexels as a free fallback image."""
+    """Optional Pexels stock photo (only used if PEXELS_API_KEY is set)."""
     key = getattr(config, "PEXELS_API_KEY", "")
     if not key:
         return None
-    query = _pexels_query(prompt)
+    query = _keywords(prompt)
     dest = config.OUTPUT_DIR / f"img_{index}.jpg"
     timeout = getattr(config, "IMAGE_TIMEOUT", 90)
     try:
@@ -150,23 +163,93 @@ def _pexels_image(prompt: str, index: int, seed: int | None = None) -> Path | No
         )
         resp.raise_for_status()
         photos = resp.json().get("photos", [])
-        if not photos:
-            print(f"[image] scene {index}: pexels found nothing for '{query}'")
-            return None
-        # Spread picks across the result set so scenes don't reuse the same photo.
-        photo = photos[(index + (seed or 0)) % len(photos)]
-        src = photo.get("src", {})
-        img_url = src.get("original") or src.get("portrait") or src.get("large2x")
-        if not img_url:
-            return None
-        img = requests.get(img_url, headers=HEADERS, timeout=timeout).content
-        if _is_valid_image(img):
-            dest.write_bytes(img)
-            print(f"[image] scene {index}: ok via pexels ('{query}')")
-            return dest
-        print(f"[image] scene {index}: pexels image invalid for '{query}'")
+        if photos:
+            photo = photos[(index + (seed or 0)) % len(photos)]
+            src = photo.get("src", {})
+            img_url = src.get("original") or src.get("portrait") or src.get("large2x")
+            if img_url and _download_valid(img_url, dest, timeout):
+                print(f"[image] scene {index}: ok via pexels ('{query}')")
+                return dest
     except requests.RequestException as exc:
         print(f"[image] scene {index}: pexels failed: {exc}")
+    return None
+
+
+def _openverse_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
+    """Keyword search over openly-licensed images (keyless, cloud-friendly)."""
+    query = _keywords(prompt)
+    dest = config.OUTPUT_DIR / f"img_{index}.jpg"
+    timeout = getattr(config, "IMAGE_TIMEOUT", 90)
+    try:
+        r = requests.get(
+            "https://api.openverse.org/v1/images/",
+            params={"q": query, "page_size": 20, "aspect_ratio": "tall", "mature": "false"},
+            headers={"User-Agent": _API_UA}, timeout=timeout,
+        )
+        r.raise_for_status()
+        results = r.json().get("results", [])
+        for off in range(len(results)):
+            hit = results[(index + (seed or 0) + off) % len(results)]
+            # thumbnail is Openverse-proxied (no hotlink blocks); url is full-res.
+            for img_url in (hit.get("thumbnail"), hit.get("url")):
+                if img_url and _download_valid(img_url, dest, timeout):
+                    print(f"[image] scene {index}: ok via openverse ('{query}')")
+                    return dest
+    except requests.RequestException as exc:
+        print(f"[image] scene {index}: openverse failed: {exc}")
+    return None
+
+
+def _wikimedia_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
+    """Keyword search over Wikimedia Commons (keyless, cloud-friendly)."""
+    query = _keywords(prompt, 4)
+    dest = config.OUTPUT_DIR / f"img_{index}.jpg"
+    timeout = getattr(config, "IMAGE_TIMEOUT", 90)
+    try:
+        r = requests.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params={"action": "query", "generator": "search", "gsrsearch": query,
+                    "gsrnamespace": 6, "gsrlimit": 10, "prop": "imageinfo",
+                    "iiprop": "url", "iiurlwidth": config.VIDEO_WIDTH, "format": "json"},
+            headers={"User-Agent": _API_UA}, timeout=timeout,
+        )
+        r.raise_for_status()
+        pages = list(r.json().get("query", {}).get("pages", {}).values())
+        urls = [p["imageinfo"][0].get("thumburl") for p in pages if p.get("imageinfo")]
+        urls = [u for u in urls if u]
+        for off in range(len(urls)):
+            u = urls[(index + (seed or 0) + off) % len(urls)]
+            if _download_valid(u, dest, timeout):
+                print(f"[image] scene {index}: ok via wikimedia ('{query}')")
+                return dest
+    except requests.RequestException as exc:
+        print(f"[image] scene {index}: wikimedia failed: {exc}")
+    return None
+
+
+def _picsum_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
+    """Guaranteed keyless image: a real (random) photo, always available."""
+    dest = config.OUTPUT_DIR / f"img_{index}.jpg"
+    timeout = getattr(config, "IMAGE_TIMEOUT", 90)
+    s = (seed or 0) + index
+    url = f"https://picsum.photos/seed/{s}/{config.VIDEO_WIDTH}/{config.VIDEO_HEIGHT}"
+    if _download_valid(url, dest, timeout):
+        print(f"[image] scene {index}: ok via picsum (seed {s})")
+        return dest
+    return None
+
+
+# Tried in order. Keyless + relevant first (Wikimedia is verified reliable from
+# cloud IPs), then Openverse, then optional Pexels (only if a key is set), and
+# finally Picsum as an always-available backstop so we never fall to a gradient.
+_FALLBACK_SOURCES = (_wikimedia_image, _openverse_image, _pexels_image, _picsum_image)
+
+
+def _fallback_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
+    for source in _FALLBACK_SOURCES:
+        path = source(prompt, index, seed=seed)
+        if path:
+            return path
     return None
 
 
