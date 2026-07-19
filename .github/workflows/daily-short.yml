@@ -4,9 +4,13 @@ name: Daily YouTube Short
 # be triggered manually from the Actions tab ("Run workflow").
 on:
   schedule:
-    # 03:30 UTC == 09:00 AM IST every day. Cron is ALWAYS in UTC.
-    # Edit this to your preferred time. Format: "min hour day month weekday".
-    - cron: "30 3 * * *"
+    # Cron is ALWAYS in UTC. IST = UTC + 5:30, so we subtract 5:30.
+    # 4 uploads/day tuned for an Indian audience (evening + lunch + after-school
+    # + morning). Format: "min hour day month weekday".
+    - cron: "30 3 * * *"    # 09:00 IST  - morning commute / pre-work
+    - cron: "0 7 * * *"     # 12:30 IST  - lunch-break scroll
+    - cron: "30 10 * * *"   # 16:00 IST  - after-school (great for story videos)
+    - cron: "0 13 * * *"    # 18:30 IST  - indexes ahead of the 7-9 PM prime peak
   workflow_dispatch: {}
 
 # Avoid two runs overlapping if a previous one is still going.
