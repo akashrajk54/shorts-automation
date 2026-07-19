@@ -33,6 +33,16 @@ def _format_script(content: dict) -> str:
     return content.get("narration", "")
 
 
+def _youtube_description(content: dict) -> str:
+    """Build the full YouTube description: summary + hashtags (with #Shorts)."""
+    description = content.get("description", "").strip()
+    hashtags = list(content.get("hashtags", []))
+    tag_line = " ".join(hashtags)
+    if "#shorts" not in tag_line.lower():
+        tag_line = ("#Shorts " + tag_line).strip()
+    return f"{description}\n\n{tag_line}".strip()
+
+
 def _send_upload_pack(content: dict) -> None:
     """Send the YouTube metadata as SEPARATE messages so each can be copied alone."""
     title = content.get("title", "")
@@ -163,7 +173,7 @@ def run() -> None:
         url = upload_video(
             video_path=video_path,
             title=content["title"],
-            description=content["description"],
+            description=_youtube_description(content),
             tags=content.get("tags", []),
         )
         notifier.notify(f"🎉 Done! Uploaded to YouTube:\n{content['title']}\n{url}")
