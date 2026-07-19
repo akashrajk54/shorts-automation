@@ -5,12 +5,13 @@ name: Daily YouTube Short
 on:
   schedule:
     # Cron is ALWAYS in UTC. IST = UTC + 5:30, so we subtract 5:30.
-    # 4 uploads/day tuned for an Indian audience (evening + lunch + after-school
-    # + morning). Format: "min hour day month weekday".
+    # 5 uploads/day tuned for an Indian audience, each hitting a DISTINCT peak
+    # window so they don't cannibalise each other. Format: "min hour day month weekday".
     - cron: "30 3 * * *"    # 09:00 IST  - morning commute / pre-work
     - cron: "0 7 * * *"     # 12:30 IST  - lunch-break scroll
-    - cron: "30 10 * * *"   # 16:00 IST  - after-school (great for story videos)
+    - cron: "0 10 * * *"    # 15:30 IST  - after-school (great for story videos)
     - cron: "0 13 * * *"    # 18:30 IST  - indexes ahead of the 7-9 PM prime peak
+    - cron: "0 16 * * *"    # 21:30 IST  - night-owl scroll (9-11 PM window)
   workflow_dispatch: {}
 
 # Avoid two runs overlapping if a previous one is still going.
