@@ -11,6 +11,8 @@ import requests
 from PIL import Image
 
 POLLINATIONS_URL = "https://image.pollinations.ai/prompt/{prompt}"
+# Free fallback when Pollinations fails/runs out of Pollen (works from cloud IPs).
+PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     "Referer": "https://shorts-automation.local",
@@ -115,7 +117,56 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
             except requests.RequestException as exc:
                 print(f"[image] scene {index} ({provider['model']}) try {retry + 1} failed: {exc}")
             time.sleep(2)
-    print(f"[image] scene {index}: all providers failed")
+    print(f"[image] scene {index}: all Pollinations providers failed")
+    # Free fallback: Pexels stock photo (reliable from cloud IPs, no Pollen).
+    fallback = _pexels_image(prompt, index, seed=base_seed)
+    if fallback:
+        return fallback
+    return None
+
+
+def _pexels_query(prompt: str) -> str:
+    """Turn a long AI-art prompt into a short keyword query Pexels understands."""
+    first_clause = prompt.split(",")[0]  # drop the quality suffix / extra clauses
+    words = [w for w in first_clause.split() if w.isalpha() and len(w) > 2]
+    return " ".join(words[:6]) or "technology"
+
+
+def _pexels_image(prompt: str, index: int, seed: int | None = None) -> Path | None:
+    """Download one vertical stock photo from Pexels as a free fallback image."""
+    key = getattr(config, "PEXELS_API_KEY", "")
+    if not key:
+        return None
+    query = _pexels_query(prompt)
+    dest = config.OUTPUT_DIR / f"img_{index}.jpg"
+    timeout = getattr(config, "IMAGE_TIMEOUT", 90)
+    try:
+        resp = requests.get(
+            PEXELS_SEARCH_URL,
+            params={"query": query, "orientation": "portrait", "per_page": 15,
+                    "page": 1 + (index % 3)},
+            headers={"Authorization": key},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        photos = resp.json().get("photos", [])
+        if not photos:
+            print(f"[image] scene {index}: pexels found nothing for '{query}'")
+            return None
+        # Spread picks across the result set so scenes don't reuse the same photo.
+        photo = photos[(index + (seed or 0)) % len(photos)]
+        src = photo.get("src", {})
+        img_url = src.get("original") or src.get("portrait") or src.get("large2x")
+        if not img_url:
+            return None
+        img = requests.get(img_url, headers=HEADERS, timeout=timeout).content
+        if _is_valid_image(img):
+            dest.write_bytes(img)
+            print(f"[image] scene {index}: ok via pexels ('{query}')")
+            return dest
+        print(f"[image] scene {index}: pexels image invalid for '{query}'")
+    except requests.RequestException as exc:
+        print(f"[image] scene {index}: pexels failed: {exc}")
     return None
 
 

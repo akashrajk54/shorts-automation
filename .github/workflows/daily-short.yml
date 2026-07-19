@@ -34,6 +34,9 @@ jobs:
       # Free token from https://auth.pollinations.ai - raises image rate limits
       # so generation works from GitHub's shared/data-center IPs.
       POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+      # Free Pexels key (https://www.pexels.com/api/) - reliable image fallback
+      # from cloud IPs when Pollinations fails or runs out of Pollen.
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       # --- Config (override via repo Variables if you like) ---
       VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'hindi' }}
       PROMPT_STYLE: ${{ vars.PROMPT_STYLE || 'story' }}
