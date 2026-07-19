@@ -115,7 +115,11 @@ def run() -> None:
             f"\U0001F5BC\ufe0f Generating {n_scenes} AI scene images (a few seconds each; "
             f"slow scenes retry on backup models)..."
         )
-        image_paths = generate_images(content["image_prompts"])
+        def _img_progress(done, total, idx, ok):
+            mark = "\u2705" if ok else "\u26a0\ufe0f"
+            notifier.notify(f"{mark} Image {done}/{total} ready — building continues...")
+
+        image_paths = generate_images(content["image_prompts"], on_image=_img_progress)
         print(f"Images generated: {len(image_paths)}")
         if image_paths:
             notifier.notify(f"\u2705 Got {len(image_paths)}/{n_scenes} images. Building the video...")
@@ -138,7 +142,8 @@ def run() -> None:
     except Exception as exc:  # noqa: BLE001
         print("Video creation failed:")
         traceback.print_exc()
-        notifier.notify(f"❌ Failed while creating today's Short: {exc}")
+        notifier.notify_error("video creation", exc)
+        exc._tg_notified = True  # avoid a duplicate alert from the top-level guard
         raise
 
     # 5. Push the finished video to Telegram (so you can watch/download it there).
@@ -182,9 +187,18 @@ def run() -> None:
         print("Upload failed, falling back to manual:")
         traceback.print_exc()
         notifier.notify(
-            f"⚠️ YouTube upload FAILED ({exc}).\nUse the video + pack already sent to Telegram to upload manually."
+            "⚠️ YouTube upload FAILED — use the video + pack already sent to "
+            "Telegram to upload manually. Full error below:"
         )
+        notifier.notify_error("YouTube upload", exc)
 
 
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except Exception as exc:  # noqa: BLE001
+        # Last-resort guard: make sure EVERY failure reaches Telegram with its
+        # traceback (unless a stage-specific handler already sent it).
+        if not getattr(exc, "_tg_notified", False):
+            notifier.notify_error("pipeline", exc)
+        raise

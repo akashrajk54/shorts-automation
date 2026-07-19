@@ -1,14 +1,29 @@
 """Optional Telegram notifications for success / manual-upload fallback."""
 import time
+import traceback as _traceback
 from pathlib import Path
 
 import requests
 
 import config
 
+# Telegram hard-caps a single message at 4096 chars.
+_TG_LIMIT = 4096
+
 
 def _enabled() -> bool:
     return bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
+
+
+def notify_error(stage: str, exc: BaseException) -> None:
+    """Send a failure alert WITH the traceback tail so you can debug from phone."""
+    tb = "".join(_traceback.format_exception(type(exc), exc, exc.__traceback__))
+    header = f"\u274c FAILED at: {stage}\n{type(exc).__name__}: {exc}\n\n"
+    # Keep the most recent (most useful) part of the traceback within the limit.
+    budget = _TG_LIMIT - len(header) - 20
+    if len(tb) > budget:
+        tb = "...(truncated)...\n" + tb[-budget:]
+    notify(header + tb)
 
 
 def notify(message: str, retries: int = 3) -> None:

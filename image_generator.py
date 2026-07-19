@@ -96,29 +96,40 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
     return None
 
 
-def generate_images(prompts: list[str]) -> list[Path]:
+def generate_images(prompts: list[str], on_image=None) -> list[Path]:
     """Generate scene images with LIMITED concurrency (staggered) to dodge 429s.
 
     Full parallelism trips Pollinations' rate limit, so we use a small worker
     pool and stagger request starts; each worker also backs off on 429.
-    """
-    from concurrent.futures import ThreadPoolExecutor
 
-    workers = min(getattr(config, "MAX_IMAGE_WORKERS", 2), max(1, len(prompts)))
+    on_image: optional callback(done, total, index, ok) fired as each scene
+    finishes, so callers can report live progress (e.g. to Telegram).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    total = len(prompts)
+    workers = min(getattr(config, "MAX_IMAGE_WORKERS", 2), max(1, total))
 
     def _staggered(prompt: str, i: int) -> Path | None:
         time.sleep(i * 1.5)  # gentle stagger so requests don't all hit at once
         return generate_image(prompt, i)
 
     results: dict[int, Path] = {}
+    done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_staggered, p, i): i for i, p in enumerate(prompts)}
-        for future in futures:
+        for future in as_completed(futures):
             i = futures[future]
             path = future.result()
+            done += 1
             if path:
                 print(f"[image] saved scene {i}: {path.name}")
                 results[i] = path
+            if on_image is not None:
+                try:
+                    on_image(done, total, i, path is not None)
+                except Exception:  # noqa: BLE001  (never let progress reporting break generation)
+                    pass
     # Preserve scene order for a coherent slideshow.
     return [results[i] for i in sorted(results)]
 
