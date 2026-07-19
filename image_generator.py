@@ -16,8 +16,21 @@ HEADERS = {
     "Referer": "https://shorts-automation.local",
 }
 
+
+def _auth_headers() -> dict:
+    """Add a Bearer token if configured (raises Pollinations rate limits)."""
+    h = dict(HEADERS)
+    token = getattr(config, "POLLINATIONS_TOKEN", "")
+    if token:
+        h["Authorization"] = f"Bearer {token}"
+    return h
+
 # Reject obviously broken downloads, but don't be overly strict.
 MIN_BYTES = 8_000
+# When rate-limited, Pollinations sometimes returns HTTP 200 with a ~1.3MB
+# placeholder image instead of a real one. Reject it by its known MD5 so we
+# retry/back off instead of shipping a broken frame.
+RATE_LIMIT_HASHES = {"2090a5dc21c32952cbf8496339752bd1"}
 QUALITY_SUFFIX = (
     ", ultra detailed, high resolution, sharp focus, cinematic lighting, "
     "vibrant colors, highly detailed, 4k"
@@ -33,9 +46,12 @@ PROVIDERS = (
 
 
 def _is_valid_image(data: bytes) -> bool:
-    """Verify the bytes are a complete, reasonably-sized image (not broken)."""
+    """Verify the bytes are a complete, reasonably-sized image (not broken and not
+    the rate-limit placeholder Pollinations serves with HTTP 200)."""
     if not data or len(data) < MIN_BYTES:
         return False
+    if hashlib.md5(data).hexdigest() in RATE_LIMIT_HASHES:
+        return False  # rate-limit placeholder disguised as a real 200 response
     try:
         Image.open(io.BytesIO(data)).verify()  # detects truncated/corrupt files
         w, h = Image.open(io.BytesIO(data)).size
@@ -66,18 +82,22 @@ def generate_image(prompt: str, index: int, seed: int | None = None) -> Path | N
                 "seed": base_seed + attempt * 101,  # fresh image each try
                 "nologo": "true",
                 "model": provider["model"],
-                "referrer": "shorts-automation",
+                "referrer": getattr(config, "POLLINATIONS_REFERRER", "shorts-automation"),
             }
+            token = getattr(config, "POLLINATIONS_TOKEN", "")
+            if token:
+                params["token"] = token  # also send as query param (belt + braces)
             if provider["enhance"]:
                 params["enhance"] = "true"
             try:
                 start = time.time()
-                resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
-                if resp.status_code == 429:
+                resp = requests.get(url, params=params, headers=_auth_headers(), timeout=timeout)
+                # 402 = "Queue full for IP" (per-IP rate limit); treat like 429.
+                if resp.status_code in (429, 402):
                     wait = backoff + random.uniform(0, 2)
                     backoff = min(backoff * 2, 40)
-                    print(f"[image] scene {index} ({provider['model']}): rate-limited (429), "
-                          f"waiting {wait:.1f}s")
+                    print(f"[image] scene {index} ({provider['model']}): rate-limited "
+                          f"({resp.status_code}), waiting {wait:.1f}s")
                     time.sleep(wait)
                     continue
                 resp.raise_for_status()

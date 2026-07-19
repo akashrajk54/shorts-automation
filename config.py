@@ -32,6 +32,12 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # Pexels is optional/legacy; visuals now come from free AI images (Pollinations).
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
+# Pollinations auth: anonymous requests are rate-limited PER IP (harsh on shared
+# cloud/CI IPs -> 429/402 "Queue full"). Register a FREE token at
+# https://auth.pollinations.ai to raise the limits so it works from GitHub Actions.
+POLLINATIONS_TOKEN = os.getenv("POLLINATIONS_TOKEN", "").strip()
+# App identifier sent as ?referrer= (also used for referrer-based auth).
+POLLINATIONS_REFERRER = os.getenv("POLLINATIONS_REFERRER", "shorts-automation").strip()
 
 # --- Content ---
 NICHE = os.getenv("NICHE", "AI tools and tech tips").strip()

@@ -31,6 +31,9 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      # Free token from https://auth.pollinations.ai - raises image rate limits
+      # so generation works from GitHub's shared/data-center IPs.
+      POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
       # --- Config (override via repo Variables if you like) ---
       VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'hindi' }}
       PROMPT_STYLE: ${{ vars.PROMPT_STYLE || 'story' }}
