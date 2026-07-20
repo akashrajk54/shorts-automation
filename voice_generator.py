@@ -124,32 +124,46 @@ def _voice_for(speaker: str, language: str = None) -> dict:
     """
     voices = _voices_for_language(language or config.VIDEO_LANGUAGE)
     if str(speaker).lower().startswith("b"):
-        # Boy: male Hindi voice pitched well up + a touch faster => little boy.
-        return {"voice": voices["boy"], "rate": "+10%", "pitch": "+45Hz"}
+        # Boy: male Hindi voice pitched well up + faster => snappy little boy.
+        return {"voice": voices["boy"], "rate": "+16%", "pitch": "+45Hz"}
     # Girl: female Hindi voice brightened + livelier => sweet little girl.
-    return {"voice": voices["girl"], "rate": "+13%", "pitch": "+30Hz"}
+    return {"voice": voices["girl"], "rate": "+19%", "pitch": "+30Hz"}
 
 
-def _speech_end(clip, tail: float = 0.05) -> float:
-    """Return the timestamp where actual speech ends, so we can drop the long
-    trailing silence edge-tts pads onto each line. Keeps a small `tail` so words
-    aren't clipped. Falls back to the full duration if analysis fails."""
+def _speech_bounds(clip, head: float = 0.04, tail: float = 0.06):
+    """Return (start, end) seconds of actual speech in the clip, so we can drop
+    BOTH the leading and trailing silence edge-tts pads onto each line. This keeps
+    the gap when the speaker switches short AND removes the little pause before a
+    kid starts talking. Small head/tail margins avoid clipping words. Falls back
+    to the full clip if analysis fails."""
     try:
         chunks = list(clip.iter_chunks(fps=22050, quantize=False, nbytes=2, chunksize=22050))
         arr = np.concatenate(chunks, axis=0)
     except Exception:  # noqa: BLE001
-        return clip.duration
+        return 0.0, clip.duration
     if arr.ndim > 1:
         arr = arr.mean(axis=1)
     amp = np.abs(arr)
     peak = amp.max()
     if peak <= 0:
-        return clip.duration
+        return 0.0, clip.duration
     idx = np.where(amp > peak * 0.02)[0]  # 2% of peak = speech threshold
     if len(idx) == 0:
-        return clip.duration
-    end = (idx[-1] + 1) / 22050 + tail
-    return float(min(clip.duration, max(0.2, end)))
+        return 0.0, clip.duration
+    start = max(0.0, idx[0] / 22050 - head)
+    end = min(clip.duration, (idx[-1] + 1) / 22050 + tail)
+    return start, max(start + 0.2, end)
+
+
+def _tighten(line: str) -> str:
+    """Remove punctuation that makes edge-tts pause dramatically mid-line
+    (ellipses and dashes), so a kid's sentence flows without long gaps."""
+    import re
+    line = line.replace("\u2026", " ")                 # ellipsis char
+    line = re.sub(r"\.\.\.+", " ", line)               # "..."
+    line = re.sub(r"\s*[\u2014\u2013]\s*", ", ", line)  # em/en dash -> short comma pause
+    line = re.sub(r"\s+", " ", line).strip()
+    return line
 
 
 def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
@@ -173,7 +187,7 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
 
     for i, turn in enumerate(dialogue):
         speaker = turn.get("speaker", "girl")
-        line = (turn.get("line") or "").strip()
+        line = _tighten((turn.get("line") or "").strip())
         if not line:
             continue
         v = _voice_for(speaker, language)
@@ -182,15 +196,18 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
             _synthesize(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"])
         )
         clip = AudioFileClip(str(tmp))
-        # Trim the long trailing silence edge-tts pads on, so the gap when the
-        # voice switches (girl <-> boy) stays short and snappy.
-        duration = _speech_end(clip)
-        clip = clip.subclip(0, duration)
+        # Trim BOTH leading and trailing silence edge-tts pads on, so the gap when
+        # the voice switches (girl <-> boy) AND the pause before each kid starts
+        # talking stay short and snappy.
+        lead, end = _speech_bounds(clip)
+        clip = clip.subclip(lead, end)
+        duration = end - lead
         for w in line_words:
+            # Shift word timings by the trimmed lead so karaoke stays in sync.
             words.append({
                 "text": w["text"],
                 "speaker": speaker,
-                "start": start + w["start"],
+                "start": start + max(0.0, w["start"] - lead),
                 "duration": w["duration"],
             })
         # One segment (=> one image) per dialogue line.

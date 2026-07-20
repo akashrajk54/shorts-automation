@@ -172,14 +172,67 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def _wrap_by_pixels(draw, text, font, max_width, stroke):
-    """Wrap text into lines that fit within max_width pixels."""
+def _load_latin_font(size: int) -> ImageFont.FreeTypeFont:
+    """Load a Latin font for the English/ASCII characters mixed into captions.
+
+    Indic script fonts (e.g. Noto Sans Devanagari) often lack Latin glyphs, so
+    English words rendered with them show as empty boxes (tofu). We render Latin
+    runs with this font instead."""
+    for path in _LATIN_FONTS:
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _is_latin_char(ch: str) -> bool:
+    """True for Latin letters, digits and common punctuation/whitespace, which
+    should be drawn with the Latin font rather than the script font."""
+    o = ord(ch)
+    return o < 0x0250 or 0x2000 <= o <= 0x206F
+
+
+def _split_font_runs(text: str, primary: ImageFont.FreeTypeFont,
+                     latin: ImageFont.FreeTypeFont):
+    """Break text into consecutive (substring, font) runs so Latin characters use
+    the Latin font and script characters use the primary font -> no tofu boxes."""
+    runs: list[list] = []
+    for ch in text:
+        f = latin if _is_latin_char(ch) else primary
+        if runs and runs[-1][1] is f:
+            runs[-1][0] += ch
+        else:
+            runs.append([ch, f])
+    return runs
+
+
+def _text_width(draw, text: str, primary, latin) -> float:
+    """Pixel width of mixed-script text measured with the correct font per run."""
+    return sum(draw.textlength(s, font=f) for s, f in _split_font_runs(text, primary, latin))
+
+
+def _draw_mixed(draw, x: int, top_y: int, text: str, primary, latin,
+                fill, stroke: int) -> float:
+    """Draw mixed-script text, each run in the font that has its glyphs. Runs are
+    baseline-aligned so mixed Hindi+English text sits on one clean line. Returns
+    the x position after the drawn text."""
+    ascent = max(primary.getmetrics()[0], latin.getmetrics()[0])
+    baseline = top_y + ascent
+    for s, f in _split_font_runs(text, primary, latin):
+        draw.text((x, baseline), s, font=f, fill=fill, stroke_width=stroke,
+                  stroke_fill="black", anchor="ls")
+        x += draw.textlength(s, font=f)
+    return x
+
+
+def _wrap_by_pixels(draw, text, font, latin, max_width, stroke):
+    """Wrap text into lines that fit within max_width pixels (mixed-script aware)."""
     words = text.split()
     lines, current = [], ""
     for word in words:
         candidate = f"{current} {word}".strip()
-        bbox = draw.textbbox((0, 0), candidate, font=font, stroke_width=stroke)
-        if (bbox[2] - bbox[0]) <= max_width or not current:
+        if _text_width(draw, candidate, font, latin) <= max_width or not current:
             current = candidate
         else:
             lines.append(current)
@@ -244,11 +297,12 @@ def _render_caption_image(text: str, duration: float, color: str = "white") -> I
     font_size = CAPTION_MAX_FONT
     while font_size >= 40:
         font = _load_font(font_size)
-        lines = _wrap_by_pixels(draw, text, font, max_width, stroke)
+        latin = _load_latin_font(font_size)
+        lines = _wrap_by_pixels(draw, text, font, latin, max_width, stroke)
         line_height = int(font_size * 1.2)
         block_height = line_height * len(lines)
         widest = max(
-            (draw.textbbox((0, 0), ln, font=font, stroke_width=stroke)[2] for ln in lines),
+            (_text_width(draw, ln, font, latin) for ln in lines),
             default=0,
         )
         if widest <= max_width and block_height <= max_block_height:
@@ -260,17 +314,9 @@ def _render_caption_image(text: str, duration: float, color: str = "white") -> I
     _draw_caption_panel(draw, widest, start_y, block_height)
     y = start_y
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font, stroke_width=stroke)
-        line_width = bbox[2] - bbox[0]
-        x = (config.VIDEO_WIDTH - line_width) // 2
-        draw.text(
-            (x, y),
-            line,
-            font=font,
-            fill=color,
-            stroke_width=stroke,
-            stroke_fill="black",
-        )
+        line_width = _text_width(draw, line, font, latin)
+        x = int((config.VIDEO_WIDTH - line_width) // 2)
+        _draw_mixed(draw, x, y, line, font, latin, color, stroke)
         y += line_height
 
     return ImageClip(np.array(img)).set_duration(duration)
@@ -283,13 +329,13 @@ HIGHLIGHT_COLOR = "#FFE14D"
 MAX_WORDS_PER_GROUP = 5
 
 
-def _layout_words(draw, words: list[str], font, max_width: int):
-    """Wrap words into lines that fit max_width. Returns list of lines,
-    each a list of (word, local_index)."""
-    space_w = draw.textlength(" ", font=font)
+def _layout_words(draw, words: list[str], font, latin, max_width: int):
+    """Wrap words into lines that fit max_width (mixed-script aware). Returns list
+    of lines, each a list of (word, local_index)."""
+    space_w = draw.textlength(" ", font=latin)
     lines, current, current_w = [], [], 0.0
     for idx, word in enumerate(words):
-        ww = draw.textlength(word, font=font)
+        ww = _text_width(draw, word, font, latin)
         add = ww if not current else space_w + ww
         if current and current_w + add > max_width:
             lines.append(current)
@@ -316,29 +362,29 @@ def _render_karaoke_image(words: list[str], active_idx: int, base_color: str) ->
     font_size = CAPTION_MAX_FONT
     while font_size >= 40:
         font = _load_font(font_size)
-        lines = _layout_words(draw, words, font, max_width)
+        latin = _load_latin_font(font_size)
+        lines = _layout_words(draw, words, font, latin, max_width)
         line_height = int(font_size * 1.2)
         block_height = line_height * len(lines)
         widest = max(
-            (draw.textlength(" ".join(w for w, _ in ln), font=font) for ln in lines),
+            (_text_width(draw, " ".join(w for w, _ in ln), font, latin) for ln in lines),
             default=0,
         )
         if widest <= max_width and block_height <= max_block_height:
             break
         font_size -= 6
 
-    space_w = draw.textlength(" ", font=font)
+    space_w = draw.textlength(" ", font=latin)
     start_y = int(config.VIDEO_HEIGHT * CAPTION_CENTER_Y) - block_height // 2
     _draw_caption_panel(draw, widest, start_y, block_height)
     y = start_y
     for line in lines:
-        line_w = sum(draw.textlength(w, font=font) for w, _ in line) + space_w * (len(line) - 1)
-        x = (config.VIDEO_WIDTH - line_w) // 2
+        line_w = sum(_text_width(draw, w, font, latin) for w, _ in line) + space_w * (len(line) - 1)
+        x = int((config.VIDEO_WIDTH - line_w) // 2)
         for word, idx in line:
             fill = HIGHLIGHT_COLOR if idx == active_idx else base_color
-            draw.text((x, y), word, font=font, fill=fill,
-                      stroke_width=stroke, stroke_fill="black")
-            x += draw.textlength(word, font=font) + space_w
+            x = _draw_mixed(draw, x, y, word, font, latin, fill, stroke)
+            x += space_w
         y += line_height
 
     return np.array(img)
