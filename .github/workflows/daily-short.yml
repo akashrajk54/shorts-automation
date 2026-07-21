@@ -35,8 +35,11 @@ jobs:
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       # --- Config (override via repo Variables if you like) ---
       VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'hindi' }}
-      PROMPT_STYLE: ${{ vars.PROMPT_STYLE || 'story' }}
-      NICHE: ${{ vars.NICHE || 'AI tools and tech tips' }}
+      # Target audience: curious Indian AI beginners (18-30, students + early-career).
+      # 'tips' = one confident narrator giving a punchy, real, actionable AI tip
+      # (matches search intent + higher completion than the kids-story format).
+      PROMPT_STYLE: ${{ vars.PROMPT_STYLE || 'tips' }}
+      NICHE: ${{ vars.NICHE || 'AI & tech tools that make everyday life easier' }}
       AUTO_UPLOAD: "true"
       YOUTUBE_PRIVACY: ${{ vars.YOUTUBE_PRIVACY || 'public' }}
       BACKGROUND_MUSIC: "true"

@@ -24,6 +24,11 @@ GEMINI_MODELS = [
 TIPS_PROMPT_TEMPLATE = """You are a world-class viral YouTube Shorts scriptwriter and researcher
 for the niche: "{niche}".
 
+TARGET VIEWER (write directly for this person): a curious young Indian, age 18-30 -
+a student or early-career professional, phone-first, who wants to look smart, save
+time, and get ahead using FREE AI tools. They love quick "I didn't know AI could do
+THAT" hacks they can use today. Speak to THEM like a clever friend sharing a shortcut.
+
 Today's CURRENTLY TRENDING topics/headlines, RANKED by relevance + current demand
 (top = strongest). STRONGLY prefer building today's video on one of the TOP trends you
 haven't used before - this rides real search demand. Adapt it into a genuinely useful,
@@ -264,13 +269,23 @@ def generate_content(niche: str = None, style: str = None, language: str = None)
         f"in ENGLISH always (the image model needs English).\n\n"
     )
     if language.lower() == "hindi":
-        lang_directive += (
-            "HINDI STYLE: Write the way real, everyday North-Indian (Delhi) kids actually "
-            "talk \u2014 warm, playful, simple spoken Hindi (Devanagari). It's natural to keep "
-            "common English tech words (app, phone, AI, tool names) in English as kids do, "
-            "but keep the sentences clean, correct and easy for a child to say. Avoid heavy, "
-            "bookish or Sanskritised words.\n\n"
-        )
+        if style == "story":
+            lang_directive += (
+                "HINDI STYLE: Write the way real, everyday North-Indian (Delhi) kids actually "
+                "talk \u2014 warm, playful, simple spoken Hindi (Devanagari). It's natural to keep "
+                "common English tech words (app, phone, AI, tool names) in English as kids do, "
+                "but keep the sentences clean, correct and easy for a child to say. Avoid heavy, "
+                "bookish or Sanskritised words.\n\n"
+            )
+        else:
+            lang_directive += (
+                "HINDI STYLE: Write in natural, everyday HINGLISH the way young Indians "
+                "(18-30, students + early-career) actually speak and text \u2014 confident, "
+                "energetic spoken Hindi (Devanagari) that freely mixes in common English "
+                "tech words (AI, app, ChatGPT, prompt, tool/brand names, 'free', 'setting'). "
+                "Sound like a smart friend giving a quick hack, NOT a textbook or news anchor. "
+                "Avoid heavy, bookish or Sanskritised Hindi.\n\n"
+            )
     template = STORY_PROMPT_TEMPLATE if style == "story" else TIPS_PROMPT_TEMPLATE
     prompt = lang_directive + template.format(
         niche=niche, trends=trends_block, history=history_block,
