@@ -7,9 +7,12 @@ on:
     # Cron is ALWAYS in UTC. IST = UTC + 5:30, so we subtract 5:30.
     # 3 uploads/day tuned for an Indian audience, each hitting a DISTINCT peak
     # window so they don't cannibalise each other. Format: "min hour day month weekday".
-    - cron: "0 7 * * *"     # 12:30 IST  - lunch-break scroll
-    - cron: "0 10 * * *"    # 15:30 IST  - after-school (great for story videos)
-    - cron: "0 16 * * *"    # 21:30 IST  - night-owl scroll (9-11 PM window)
+    # NOTE: GitHub runs schedules on a BEST-EFFORT basis and heavily delays/skips
+    # jobs at the top of the hour (:00) and :30. We use off-peak minutes (:12) to
+    # reduce delay - actual start can still drift by several minutes to ~1 hour.
+    - cron: "12 7 * * *"    # ~12:42 IST - lunch-break scroll
+    - cron: "12 10 * * *"   # ~15:42 IST - after-school (great for story videos)
+    - cron: "12 16 * * *"   # ~21:42 IST - night-owl scroll (9-11 PM window)
   workflow_dispatch: {}
 
 # Avoid two runs overlapping if a previous one is still going.

@@ -1,12 +1,25 @@
 """Generate a short-form video script + metadata using Google Gemini (free tier)."""
 import json
+import os
 import random
 import re
+import time
 
 import config  # noqa: F401  (imported first to configure SSL trust)
 import google.generativeai as genai
 import history
 from trend_finder import get_trending
+
+# Models tried in order. The default primary (gemini-2.0-flash) has a far more
+# generous free tier than gemini-flash-latest (which now maps to gemini-3.5-flash
+# at only 5 requests/min). If one is rate-limited (429), we fall through to the
+# next model so a single quota hit no longer kills the whole run.
+GEMINI_MODELS = [
+    m.strip() for m in os.getenv(
+        "GEMINI_MODELS",
+        "gemini-2.0-flash,gemini-2.5-flash,gemini-flash-latest,gemini-1.5-flash",
+    ).split(",") if m.strip()
+]
 
 TIPS_PROMPT_TEMPLATE = """You are a world-class viral YouTube Shorts scriptwriter and researcher
 for the niche: "{niche}".
@@ -168,6 +181,44 @@ def _story_variety() -> str:
     )
 
 
+def _retry_wait(msg: str, attempt: int) -> float:
+    """Seconds to wait before retrying a 429. Honor the server's retry hint if
+    present (e.g. 'Please retry in 55.8s' / 'seconds: 55'), else exponential."""
+    m = (re.search(r"retry[^0-9]{0,20}(\d+(?:\.\d+)?)\s*s", msg, re.I)
+         or re.search(r"seconds:\s*(\d+)", msg))
+    if m:
+        return min(float(m.group(1)) + 2, 65)
+    return min(15 * (attempt + 1), 60)
+
+
+def _generate_json(prompt: str) -> dict:
+    """Call Gemini for JSON content, retrying and falling back across models on
+    rate-limit (429) or transient errors, so one quota hit doesn't fail the run."""
+    genai.configure(api_key=config.GEMINI_API_KEY)
+    last_exc = None
+    for model_name in GEMINI_MODELS:
+        model = genai.GenerativeModel(model_name)
+        for attempt in range(2):  # one retry per model after a backoff wait
+            try:
+                response = model.generate_content(prompt)
+                return _extract_json(response.text)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                msg = str(exc)
+                is_quota = ("429" in msg or "quota" in msg.lower()
+                            or "exhaust" in msg.lower() or "rate" in msg.lower())
+                if is_quota and attempt == 0:
+                    wait = _retry_wait(msg, attempt)
+                    print(f"[content] {model_name} rate-limited (429); waiting "
+                          f"{wait:.0f}s then retrying once...")
+                    time.sleep(wait)
+                    continue
+                print(f"[content] {model_name} failed ({'429' if is_quota else 'error'}): "
+                      f"{msg[:120]}. Trying next model...")
+                break
+    raise RuntimeError(f"All Gemini models exhausted/failed. Last error: {last_exc}")
+
+
 def _extract_json(text: str) -> dict:
     """Strip code fences / stray text and parse the first JSON object found."""
     text = text.strip()
@@ -184,8 +235,6 @@ def generate_content(niche: str = None, style: str = None, language: str = None)
     niche = niche or config.NICHE
     style = (style or config.PROMPT_STYLE or "tips").lower()
     language = (language or config.VIDEO_LANGUAGE or "english").strip()
-    genai.configure(api_key=config.GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-flash-latest")
 
     trends = get_trending(niche)
     trends_block = "\n".join(f"- {t}" for t in trends) or "- (no live trends available)"
@@ -213,8 +262,7 @@ def generate_content(niche: str = None, style: str = None, language: str = None)
         niche=niche, trends=trends_block, history=history_block,
         variety=_story_variety(),
     )
-    response = model.generate_content(prompt)
-    data = _extract_json(response.text)
+    data = _generate_json(prompt)
 
     # Shared defaults
     data.setdefault("tags", [])
