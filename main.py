@@ -7,6 +7,7 @@ import config
 import notifier
 from content_generator import generate_content
 from image_generator import generate_images
+from stock_video import fetch_stock_videos
 from video_builder import build_video
 from voice_generator import generate_dialogue_voice, generate_voice
 
@@ -129,6 +130,20 @@ def run() -> None:
                 "gradient background instead. Building the video..."
             )
 
+        # 3b. Free stock VIDEO clips (hybrid visuals): real motion where a clip
+        # matches a scene; scenes without one keep the AI image + Ken Burns motion.
+        video_paths = {}
+        if config.STOCK_VIDEO:
+            notifier.notify("\U0001F3A5 Looking for real stock video clips for scenes...")
+            video_paths = fetch_stock_videos(content.get("video_queries", []))
+            if video_paths:
+                notifier.notify(
+                    f"\u2705 Got {len(video_paths)} real video clip(s); the rest use "
+                    f"AI images with motion."
+                )
+            else:
+                notifier.notify("\u2139\ufe0f No stock clips this time \u2014 using AI images with motion.")
+
         # 4. Video
         video_path = build_video(
             narration=content["narration"],
@@ -136,6 +151,8 @@ def run() -> None:
             image_paths=image_paths,
             filename=f"short_{stamp}.mp4",
             word_segments=word_segments,
+            scene_segments=scene_segments,
+            video_paths=video_paths,
         )
         print(f"Video built: {video_path}")
         notifier.notify("✅ Video built successfully! Sending it to you on Telegram...")

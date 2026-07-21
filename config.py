@@ -32,6 +32,9 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # Pexels is optional/legacy; visuals now come from free AI images (Pollinations).
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
+# Pixabay is an OPTIONAL extra free source of stock video clips (get a free key at
+# https://pixabay.com/api/docs/). Used only as a fallback when Pexels has no clip.
+PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "").strip()
 # Pollinations auth: anonymous requests are rate-limited PER IP (harsh on shared
 # cloud/CI IPs -> 429/402 "Queue full"). Register a FREE token at
 # https://auth.pollinations.ai to raise the limits so it works from GitHub Actions.
@@ -63,6 +66,10 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 VIDEO_FPS = 30
+# Hybrid visuals: pull free real stock VIDEO clips (Pexels/Pixabay) for scenes when
+# available, and fall back to AI images with Ken Burns motion. Real motion holds
+# attention better. Set STOCK_VIDEO=false to go back to images-only.
+STOCK_VIDEO = os.getenv("STOCK_VIDEO", "true").strip().lower() == "true"
 # Per-request timeout (seconds) for AI image downloads.
 try:
     IMAGE_TIMEOUT = int(os.getenv("IMAGE_TIMEOUT", "90"))

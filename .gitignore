@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 output/
 token.json
+token*.json
+*token*.json
 client_secret*.json
 *.mp3
 *.mp4

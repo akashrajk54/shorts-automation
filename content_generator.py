@@ -77,11 +77,17 @@ Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
     "(so if the narration has 6 sentences, return 6 prompts). Each prompt must",
     "visually match that specific sentence's moment. Vivid, modern, high-quality",
     "vertical (9:16), cinematic lighting, photorealistic, NO text/words in image."
+  ],
+  "video_queries": [
+    "ONE short 2-4 word ENGLISH stock-footage search phrase for EVERY sentence, IN",
+    "ORDER (same count as image_prompts). Use concrete, filmable REAL-WORLD scenes a",
+    "stock library would have, e.g. 'person typing laptop', 'smartphone app screen',",
+    "'excited woman phone', 'office coding', 'city night lights'. NO tool/brand names."
   ]
 }}
 
-IMPORTANT: 'image_prompts' MUST have exactly ONE entry per sentence in 'narration',
-in the same order.
+IMPORTANT: 'image_prompts' and 'video_queries' MUST each have exactly ONE entry per
+sentence in 'narration', in the same order.
 """
 
 
@@ -301,6 +307,10 @@ def generate_content(niche: str = None, style: str = None, language: str = None)
     data.setdefault("topic", data.get("title", niche))
     if not data.get("image_prompts"):
         data["image_prompts"] = [f"{niche}, modern cinematic vertical image"]
+    # video_queries feed the hybrid stock-video lookup; fall back to the image
+    # prompts (the stock module extracts keywords) so this is never empty.
+    if not data.get("video_queries"):
+        data["video_queries"] = list(data["image_prompts"])
 
     if style == "story":
         data["style"] = "story"

@@ -10,7 +10,9 @@ from moviepy.editor import (
     CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
+    VideoFileClip,
 )
+from moviepy.video.fx.loop import loop as vfx_loop
 from PIL import Image, ImageDraw, ImageFont
 
 # Pillow 10+ removed Image.ANTIALIAS, which moviepy 1.0.3 still references.
@@ -485,33 +487,66 @@ def _mix_background_music(voice: AudioFileClip, duration: float) -> CompositeAud
 _SCENE_XFADE = 0.45  # seconds of crossfade between consecutive scenes
 
 
-def _build_slides(image_paths: list[Path], scene_segments: list[dict],
-                  duration: float, envelope) -> CompositeVideoClip:
-    """Build the moving-image background: one Ken Burns shot per scene segment
-    (line/sentence), cross-faded together and aligned to the voice timeline.
+def _video_scene(clip_path: Path, duration: float) -> VideoFileClip:
+    """Turn a stock video clip into a scene: muted, cover-fit + center-cropped to
+    the vertical frame, and looped/trimmed to exactly `duration`."""
+    W, H = config.VIDEO_WIDTH, config.VIDEO_HEIGHT
+    clip = VideoFileClip(str(clip_path)).without_audio()
+    # Cover-fit: scale so the frame is fully covered, then center-crop the excess.
+    ratio = max(W / clip.w, H / clip.h)
+    clip = clip.resize(ratio)
+    clip = clip.crop(x_center=clip.w / 2, y_center=clip.h / 2, width=W, height=H)
+    # Fill the scene duration: loop short clips, trim long ones.
+    if clip.duration < duration:
+        clip = vfx_loop(clip, duration=duration)
+    return clip.set_duration(duration)
 
-    Images map to segments in order; with fewer images than segments they are
-    reused proportionally so the visual still changes at every boundary.
+
+def _build_slides(image_paths: list[Path], scene_segments: list[dict],
+                  duration: float, envelope,
+                  video_paths: dict[int, Path] = None) -> CompositeVideoClip:
+    """Build the moving background, one scene per segment (line/sentence),
+    cross-faded together and aligned to the voice timeline.
+
+    Hybrid visuals: if a real stock VIDEO clip exists for a scene it is used
+    (real motion); otherwise an AI image gets a Ken Burns move. Images map to
+    segments in order; with fewer images than segments they are reused
+    proportionally so the visual still changes at every boundary.
     """
+    video_paths = video_paths or {}
     n = len(image_paths)
     if not scene_segments:
-        seg_d = duration / n
-        scene_segments = [{"start": i * seg_d, "duration": seg_d} for i in range(n)]
+        # No timings: derive even segments from whichever media count we have.
+        count = max(n, len(video_paths)) or 1
+        seg_d = duration / count
+        scene_segments = [{"start": i * seg_d, "duration": seg_d} for i in range(count)]
     m = len(scene_segments)
 
     slides = []
     for i, seg in enumerate(scene_segments):
-        img = image_paths[min(n - 1, i * n // m)]
         start = float(seg.get("start", i * duration / m))
         seg_dur = max(0.2, float(seg.get("duration", duration / m)))
         lead = _SCENE_XFADE if i > 0 else 0.0
         clip_start = max(0.0, start - lead)          # begin the fade before the line
         clip_dur = seg_dur + lead
-        kb = _ken_burns(img, clip_dur, start_time=clip_start,
-                        envelope=envelope, motion_idx=i)
+
+        scene = None
+        if i in video_paths:
+            try:
+                scene = _video_scene(video_paths[i], clip_dur)
+            except Exception as exc:  # noqa: BLE001  (fall back to image on any decode error)
+                print(f"[video] scene {i}: stock clip failed ({exc}); using image")
+                scene = None
+        if scene is None and n:
+            img = image_paths[min(n - 1, i * n // m)]
+            scene = _ken_burns(img, clip_dur, start_time=clip_start,
+                               envelope=envelope, motion_idx=i)
+        if scene is None:
+            continue  # neither a clip nor an image for this scene
+
         if i > 0:
-            kb = kb.crossfadein(_SCENE_XFADE)
-        slides.append(kb.set_start(clip_start))
+            scene = scene.crossfadein(_SCENE_XFADE)
+        slides.append(scene.set_start(clip_start))
 
     return CompositeVideoClip(
         slides, size=(config.VIDEO_WIDTH, config.VIDEO_HEIGHT)
@@ -520,11 +555,14 @@ def _build_slides(image_paths: list[Path], scene_segments: list[dict],
 
 def build_video(narration: str, voice_path: Path, image_paths: list[Path],
                 filename: str = "output.mp4", word_segments: list[dict] = None,
-                scene_segments: list[dict] = None) -> Path:
-    """Create the final Shorts MP4 from an AI-image slideshow and return its path.
+                scene_segments: list[dict] = None,
+                video_paths: dict[int, Path] = None) -> Path:
+    """Create the final Shorts MP4 and return its path.
 
     - word_segments: per-word timings -> word-by-word karaoke captions.
-    - scene_segments: per-line/sentence timings -> one image per segment, synced.
+    - scene_segments: per-line/sentence timings -> one visual per segment, synced.
+    - video_paths: {scene_index: stock_clip} used instead of an image for those
+      scenes (hybrid real-motion visuals); other scenes use Ken Burns AI images.
     Scenes also gently pulse with the voice loudness.
     """
     out_path = config.OUTPUT_DIR / filename
@@ -538,10 +576,11 @@ def build_video(narration: str, voice_path: Path, image_paths: list[Path],
     # Loudness envelope drives the audio-reactive zoom pulse.
     envelope = _audio_envelope(voice_path)
 
-    if image_paths:
-        bg = _build_slides(image_paths, scene_segments, duration, envelope)
+    if image_paths or video_paths:
+        bg = _build_slides(image_paths, scene_segments, duration, envelope,
+                           video_paths=video_paths)
     else:
-        # Fallback: a soft vertical gradient (nicer than flat black) if no images.
+        # Fallback: a soft vertical gradient (nicer than flat black) if no visuals.
         bg = ImageClip(_gradient_bg()).set_duration(duration)
 
     # Cinematic vignette + bottom scrim: adds depth and keeps captions readable.
