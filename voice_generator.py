@@ -1,5 +1,7 @@
 """Convert narration text to an MP3 voiceover using edge-tts (free, no API key)."""
 import asyncio
+import shutil
+import subprocess
 from pathlib import Path
 
 import config  # noqa: F401  (imported first to configure SSL trust before edge_tts)
@@ -47,6 +49,41 @@ LANGUAGE_VOICES = {
 def _voices_for_language(language: str) -> dict:
     """Return the voice set for a language, falling back to English if unknown."""
     return LANGUAGE_VOICES.get((language or "").strip().lower(), LANGUAGE_VOICES["english"])
+
+
+# ffmpeg filter chain that makes raw TTS sound fuller and more "produced"/human:
+#   highpass  -> removes low rumble/muddiness
+#   acompressor -> evens out volume so it sounds steady and confident (less robotic)
+#   loudnorm  -> broadcast loudness (EBU R128) so it's clear + consistent like real VO
+# All filters are gain/tone only (no time-stretch), so word timings stay valid.
+_ENHANCE_FILTER = (
+    "highpass=f=85,"
+    "acompressor=threshold=-18dB:ratio=3:attack=5:release=120,"
+    "loudnorm=I=-16:TP=-1.5:LRA=11"
+)
+
+
+def _enhance_audio(path: Path) -> None:
+    """Post-process the MP3 in-place to sound warmer/fuller and more human.
+
+    Best-effort: if ffmpeg is missing or the filter fails, the original file is
+    left untouched so the pipeline never breaks.
+    """
+    if not shutil.which("ffmpeg"):
+        return
+    tmp = path.with_suffix(".enh.mp3")
+    cmd = [
+        "ffmpeg", "-y", "-i", str(path), "-af", _ENHANCE_FILTER,
+        "-c:a", "libmp3lame", "-q:a", "2", str(tmp),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        tmp.replace(path)
+    except Exception:  # noqa: BLE001
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
 
 
 async def _synthesize(text: str, out_path: Path, voice: str,
@@ -113,6 +150,7 @@ def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
     for w in words:
         w["speaker"] = "narrator"
     segments = _sentence_segments(text, words) if words else []
+    _enhance_audio(out_path)  # warmer, fuller, more human-sounding VO
     return out_path, words, segments
 
 
@@ -124,10 +162,11 @@ def _voice_for(speaker: str, language: str = None) -> dict:
     """
     voices = _voices_for_language(language or config.VIDEO_LANGUAGE)
     if str(speaker).lower().startswith("b"):
-        # Boy: male Hindi voice pitched well up + faster => snappy little boy.
-        return {"voice": voices["boy"], "rate": "+16%", "pitch": "+45Hz"}
-    # Girl: female Hindi voice brightened + livelier => sweet little girl.
-    return {"voice": voices["girl"], "rate": "+19%", "pitch": "+30Hz"}
+        # Boy: male Hindi voice pitched GENTLY up => reads young but stays natural
+        # (heavy pitch-shift = chipmunky/robotic, which kills realism).
+        return {"voice": voices["boy"], "rate": "+7%", "pitch": "+18Hz"}
+    # Girl: female Hindi voice brightened slightly => sweet but still human.
+    return {"voice": voices["girl"], "rate": "+8%", "pitch": "+12Hz"}
 
 
 def _speech_bounds(clip, head: float = 0.04, tail: float = 0.06):
@@ -232,6 +271,7 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
         except OSError:
             pass
 
+    _enhance_audio(out_path)  # warmer, fuller, more human-sounding VO
     return out_path, words, segments
 
 
