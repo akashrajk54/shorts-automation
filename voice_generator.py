@@ -1,5 +1,13 @@
-"""Convert narration text to an MP3 voiceover using edge-tts (free, no API key)."""
+"""Convert narration text to an MP3 voiceover.
+
+Two providers:
+  - edge-tts (free, default): decent, slightly robotic.
+  - ElevenLabs (paid, VOICE_PROVIDER=elevenlabs): highly realistic, human Hindi.
+The ElevenLabs path automatically falls back to edge-tts if the key/voice is
+missing or the API fails, so a run never breaks.
+"""
 import asyncio
+import base64
 import shutil
 import subprocess
 from pathlib import Path
@@ -7,6 +15,7 @@ from pathlib import Path
 import config  # noqa: F401  (imported first to configure SSL trust before edge_tts)
 import edge_tts
 import numpy as np
+import requests
 
 # The most natural, human-sounding English voices from edge-tts.
 # Multilingual neural voices sound noticeably more lifelike and expressive.
@@ -209,6 +218,98 @@ def _synth(text: str, out_path: Path, voice: str, rate: str = "+3%",
     raise RuntimeError(f"edge-tts failed after {retries} attempts: {last_exc}")
 
 
+# --- ElevenLabs (paid, realistic) provider -------------------------------------
+ELEVEN_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
+
+
+def _rate_to_speed(rate: str, default: float = 1.0) -> float:
+    """Convert an edge-tts style rate string ('+12%') to an ElevenLabs speed
+    multiplier (clamped to ElevenLabs' supported 0.7-1.2 range)."""
+    try:
+        pct = float(str(rate).strip().replace("%", ""))
+        return max(0.7, min(1.2, 1.0 + pct / 100.0))
+    except (TypeError, ValueError):
+        return default
+
+
+def _words_from_alignment(alignment: dict) -> list[dict]:
+    """Turn ElevenLabs character-level timings into per-word {text,start,duration}."""
+    chars = alignment.get("characters", [])
+    starts = alignment.get("character_start_times_seconds", [])
+    ends = alignment.get("character_end_times_seconds", [])
+    words: list[dict] = []
+    cur, cur_start, cur_end = "", None, None
+    for ch, s, e in zip(chars, starts, ends):
+        if ch.isspace():
+            if cur:
+                words.append({"text": cur, "start": cur_start,
+                              "duration": max(0.02, cur_end - cur_start)})
+                cur, cur_start, cur_end = "", None, None
+        else:
+            if not cur:
+                cur_start = s
+            cur += ch
+            cur_end = e
+    if cur:
+        words.append({"text": cur, "start": cur_start,
+                      "duration": max(0.02, (cur_end or 0) - (cur_start or 0))})
+    return words
+
+
+def _elevenlabs_synth(text: str, out_path: Path, voice_id: str,
+                      speed: float = 1.0) -> list[dict]:
+    """Synthesize with ElevenLabs (realistic). Returns per-word timings from the
+    API's alignment data. Raises on any failure so the caller can fall back."""
+    url = ELEVEN_TTS_URL.format(voice_id=voice_id)
+    payload = {
+        "text": text,
+        "model_id": config.ELEVENLABS_MODEL,
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.75,
+            "style": 0.0,
+            "use_speaker_boost": True,
+            "speed": speed,
+        },
+    }
+    headers = {"xi-api-key": config.ELEVENLABS_API_KEY,
+               "Content-Type": "application/json", "Accept": "application/json"}
+    resp = requests.post(url, json=payload, headers=headers,
+                         params={"output_format": "mp3_44100_128"}, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
+    audio_b64 = data.get("audio_base64")
+    if not audio_b64:
+        raise ValueError("ElevenLabs returned no audio")
+    out_path.write_bytes(base64.b64decode(audio_b64))
+    alignment = data.get("normalized_alignment") or data.get("alignment") or {}
+    return _words_from_alignment(alignment)
+
+
+def _speak(text: str, out_path: Path, edge_voice: str, role: str = "narrator",
+           rate: str = "+3%", pitch: str = "+0Hz") -> list[dict]:
+    """Unified TTS entry point. Uses ElevenLabs when configured for this role,
+    otherwise (or on any ElevenLabs failure) falls back to free edge-tts using
+    `edge_voice`. Always returns per-word timings."""
+    if config.VOICE_PROVIDER == "elevenlabs" and config.ELEVENLABS_API_KEY:
+        voice_id = {
+            "girl": config.ELEVENLABS_VOICE_GIRL,
+            "boy": config.ELEVENLABS_VOICE_BOY,
+        }.get(role, config.ELEVENLABS_VOICE_ID)
+        if voice_id:
+            try:
+                words = _elevenlabs_synth(text, out_path, voice_id,
+                                          speed=_rate_to_speed(rate))
+                print(f"[voice] ElevenLabs ok ({role}, {len(words)} words)")
+                return words
+            except Exception as exc:  # noqa: BLE001
+                print(f"[voice] ElevenLabs failed ({type(exc).__name__}: "
+                      f"{str(exc)[:100]}); falling back to edge-tts")
+        else:
+            print(f"[voice] ElevenLabs voice id missing for role '{role}'; using edge-tts")
+    return _synth(text, out_path, edge_voice, rate=rate, pitch=pitch)
+
+
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentences (handles English + Indic danda '।')."""
     import re
@@ -246,8 +347,9 @@ def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
         voice = _voices_for_language(language or config.VIDEO_LANGUAGE)["narrator"]
     out_path = config.OUTPUT_DIR / filename
     # Lively, energetic pace (config.VOICE_RATE, ~+12%) => more info per second,
-    # less boredom, better completion - while staying clear.
-    words = _synth(text, out_path, voice, rate=config.VOICE_RATE)
+    # less boredom, better completion - while staying clear. Uses ElevenLabs when
+    # configured, else edge-tts.
+    words = _speak(text, out_path, voice, role="narrator", rate=config.VOICE_RATE)
     for w in words:
         w["speaker"] = "narrator"
     words, _ = _reduce_internal_pauses(out_path, words)  # tighten sentence gaps
@@ -333,7 +435,8 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
             continue
         v = _voice_for(speaker, language)
         tmp = config.OUTPUT_DIR / f"_line_{i}.mp3"
-        line_words = _synth(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"])
+        line_words = _speak(line, tmp, v["voice"], role=speaker,
+                            rate=v["rate"], pitch=v["pitch"])
         clip = AudioFileClip(str(tmp))
         # Trim BOTH leading and trailing silence edge-tts pads on, so the gap when
         # the voice switches (girl <-> boy) AND the pause before each kid starts

@@ -43,6 +43,17 @@ jobs:
       AUTO_UPLOAD: "true"
       YOUTUBE_PRIVACY: ${{ vars.YOUTUBE_PRIVACY || 'public' }}
       BACKGROUND_MUSIC: "true"
+      # Hybrid visuals (real stock video + AI images). Toggle off with a repo Variable.
+      STOCK_VIDEO: ${{ vars.STOCK_VIDEO || 'true' }}
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+      # Voice: set repo Variable VOICE_PROVIDER=elevenlabs to use the realistic
+      # paid voice, and add the ELEVENLABS_* secrets/variables below.
+      VOICE_PROVIDER: ${{ vars.VOICE_PROVIDER || 'edge' }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_MODEL: ${{ vars.ELEVENLABS_MODEL || 'eleven_multilingual_v2' }}
+      ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+      ELEVENLABS_VOICE_GIRL: ${{ vars.ELEVENLABS_VOICE_GIRL }}
+      ELEVENLABS_VOICE_BOY: ${{ vars.ELEVENLABS_VOICE_BOY }}
 
     steps:
       - name: Checkout

@@ -54,6 +54,21 @@ VIDEO_LANGUAGE = os.getenv("VIDEO_LANGUAGE", "hindi").strip().lower()
 # and hurts comprehension, so keep it in the 8-18% range.
 VOICE_RATE = os.getenv("VOICE_RATE", "+12%").strip()
 
+# --- Voice provider ---
+# "edge" = free edge-tts (default). "elevenlabs" = paid, far more realistic
+# (human, non-robotic) voice with great Hindi support. If elevenlabs is selected
+# but the key/voice IDs are missing or the API fails, we AUTOMATICALLY fall back
+# to edge-tts so a run never breaks.
+VOICE_PROVIDER = os.getenv("VOICE_PROVIDER", "edge").strip().lower()
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
+# eleven_multilingual_v2 = best quality/Hindi realism; eleven_turbo_v2_5 = faster/cheaper.
+ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2").strip()
+# Voice IDs from your ElevenLabs Voice Library (Profile -> Voices -> copy Voice ID).
+# Narrator is used for 'tips' mode; girl/boy are used for 'story' mode.
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "").strip()          # narrator
+ELEVENLABS_VOICE_GIRL = os.getenv("ELEVENLABS_VOICE_GIRL", "").strip()
+ELEVENLABS_VOICE_BOY = os.getenv("ELEVENLABS_VOICE_BOY", "").strip()
+
 # --- Upload ---
 AUTO_UPLOAD = os.getenv("AUTO_UPLOAD", "true").strip().lower() == "true"
 YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "private").strip().lower()
