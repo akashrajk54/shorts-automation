@@ -60,7 +60,7 @@ CRITICAL CONTENT RULES:
 Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
 {{
   "topic": "2-4 word label of the main tool/subject (for de-duplication), e.g. 'Gamma AI slides'",
-  "title": "SEO title UNDER 60 chars: put the most-SEARCHED keyword/tool name FIRST, then a curiosity gap, 1 emoji (e.g. 'Gamma AI: full slides in 10s \ud83e\udd2f')",
+  "title": "SEO title UNDER 60 chars: put the most-SEARCHED keyword/tool name FIRST, then a curiosity gap, 1 emoji (e.g. 'Gamma AI: full slides in 10s 🤯')",
   "narration": "the COMPLETE 45-60 word spoken script: scroll-stopping HOOK first, names the tool, explains what it does and how to use it, ends with a takeaway + a short question to the viewer",
   "description": "2-3 sentence YouTube description that names the tool and summarizes the tip",
   "tags": ["8-12", "lowercase", "hashtag-free", "keywords"],
@@ -129,7 +129,7 @@ RULES:
 Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
 {{
   "topic": "2-4 word label of the main AI tool/subject (for de-duplication)",
-  "title": "SEO title UNDER 60 chars: put the most-SEARCHED keyword/tool name FIRST, then a curiosity gap, 1 emoji (e.g. 'Gamma AI: full slides in 10s \ud83e\udd2f')",
+  "title": "SEO title UNDER 60 chars: put the most-SEARCHED keyword/tool name FIRST, then a curiosity gap, 1 emoji (e.g. 'Gamma AI: full slides in 10s 🤯')",
   "dialogue": [
     {{"speaker": "girl", "line": "first line spoken by the girl"}},
     {{"speaker": "boy", "line": "boy's reply"}}
