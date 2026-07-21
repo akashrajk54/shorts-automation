@@ -33,9 +33,12 @@ DO NOT repeat or closely resemble any of these RECENT videos we already made
 (choose a clearly different tool/topic/angle for real variety):
 {history}
 
-Create ONE COMPLETE, self-contained short video for today. Target a 20-25 second
-narration (about 55-70 spoken words) that hooks the viewer in the first 2 seconds
-and delivers a FULL, useful tip from start to finish.
+Create ONE COMPLETE, self-contained short video for today. Target a TIGHT 15-22 second
+narration (about 45-60 spoken words). SHORTER + PUNCHIER = higher completion rate =
+more reach (this is the #1 driver of Shorts distribution). The FIRST sentence MUST be a
+scroll-stopping HOOK landing in the first ~1.5 seconds: a bold claim, a surprising
+result, or a 'you're doing X wrong' line that makes a scroller STOP. No slow intro -
+deliver the useful tip fast.
 
 CRITICAL CONTENT RULES:
 - Make it something REAL humans actually want: solve a real problem, reveal a
@@ -47,15 +50,17 @@ CRITICAL CONTENT RULES:
 - Be genuinely CREATIVE and VARIED. Vary the hook and format across videos
   (e.g. a hidden feature, a tool comparison, a step-by-step workflow, a myth-buster,
   a "you're doing X wrong", a mind-blowing use-case). Do NOT always start the same way.
-- End with a clear takeaway or one-line call to action.
+- End with a punchy takeaway PLUS one short QUESTION to the viewer that invites a
+  comment (e.g. 'Which one will you try first?') - comments strongly boost reach.
+- Make the ending loop-friendly, so it feels natural to watch again (loops help Shorts).
 - Use natural, conversational, energetic spoken English with contractions.
 - Use ONLY real, accurate tools/facts. Never invent fake tools or fake claims.
 
 Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
 {{
   "topic": "2-4 word label of the main tool/subject (for de-duplication), e.g. 'Gamma AI slides'",
-  "title": "catchy YouTube title under 70 chars, name the tool, include 1 emoji",
-  "narration": "the COMPLETE 55-70 word spoken script (names the tool, explains what it does and how to use it, ends with a takeaway)",
+  "title": "SEO title UNDER 60 chars: put the most-SEARCHED keyword/tool name FIRST, then a curiosity gap, 1 emoji (e.g. 'Gamma AI: full slides in 10s \ud83e\udd2f')",
+  "narration": "the COMPLETE 45-60 word spoken script: scroll-stopping HOOK first, names the tool, explains what it does and how to use it, ends with a takeaway + a short question to the viewer",
   "description": "2-3 sentence YouTube description that names the tool and summarizes the tip",
   "tags": ["8-12", "lowercase", "hashtag-free", "keywords"],
   "hashtags": ["5-8", "#shorts", "#relevant", "#viral", "hashtags with the # sign"],
@@ -97,8 +102,12 @@ DO NOT repeat or closely resemble any of these RECENT videos we already made
 {history}
 
 RULES:
-- 6 to 9 short dialogue turns, alternating girl/boy, ~70-90 spoken words total
-  (keep the whole thing under ~35 seconds when read aloud).
+- 6 to 8 short dialogue turns, alternating girl/boy, ~55-75 spoken words total
+  (keep the whole thing UNDER ~28 seconds when read aloud). SHORTER + PUNCHIER wins:
+  high completion + loops = more reach on Shorts.
+- The GIRL'S FIRST line MUST be a scroll-stopping HOOK for the overhearing viewer:
+  a surprising claim/result or a 'Guess what AI just did?!' that makes a scroller STOP
+  in the first 1-2 seconds - NOT a slow greeting.
 - Kids talk naturally and adorably (short sentences, contractions, a little humor),
   but the ACTUAL tip must be specific and complete: NAME the real AI tool and say
   exactly WHAT it does and HOW to use it. No vague "this tool" without naming it.
@@ -109,13 +118,15 @@ RULES:
   what I just did!", a mini competition, a curious question) - NOT with sadness.
 - Use the two kid NAMES given in the FRESHNESS DIRECTIVE (don't default to the same
   names every time).
-- End on a happy, satisfying takeaway from the boy (he "gets it") + a tiny call to action.
+- End on a happy, satisfying takeaway from the boy (he "gets it") PLUS one short
+  QUESTION to the viewer that invites a comment (comments strongly boost reach), and
+  keep the ending loop-friendly so it feels natural to rewatch.
 - Use ONLY real, accurate tools/facts. Never invent fake tools or claims.
 
 Return ONLY valid JSON (no markdown, no code fences) with these exact keys:
 {{
   "topic": "2-4 word label of the main AI tool/subject (for de-duplication)",
-  "title": "catchy YouTube title under 70 chars, name the tool, include 1 emoji",
+  "title": "SEO title UNDER 60 chars: put the most-SEARCHED keyword/tool name FIRST, then a curiosity gap, 1 emoji (e.g. 'Gamma AI: full slides in 10s \ud83e\udd2f')",
   "dialogue": [
     {{"speaker": "girl", "line": "first line spoken by the girl"}},
     {{"speaker": "boy", "line": "boy's reply"}}
