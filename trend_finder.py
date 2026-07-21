@@ -1,6 +1,7 @@
 """Find current trending tech/AI topics from free public sources (no API key)."""
 import re
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 
 import config  # noqa: F401  (imported first to configure SSL trust)
 import requests
@@ -10,6 +11,10 @@ GOOGLE_TRENDS_RSS = "https://trends.google.com/trending/rss?geo={geo}"
 GOOGLE_NEWS_RSS = "https://news.google.com/rss/search?q={q}&hl=en-IN&gl=IN&ceid=IN:en"
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+
+# Keep network waits short: many small requests run in parallel, and any single
+# slow/unreachable source is skipped rather than stalling the whole run for minutes.
+HTTP_TIMEOUT = 8
 
 # Topical queries used to pull FRESH, on-niche headlines (Google News + HN).
 NICHE_QUERIES = [
@@ -34,34 +39,41 @@ NICHE_KEYWORDS = {
 }
 
 
-def _hacker_news(queries: list[str], limit: int = 12) -> list[str]:
-    """Pull trending tech headlines from Hacker News (front page + AI search)."""
-    titles: list[str] = []
+def _hn_front_page() -> list[str]:
     try:
         r = requests.get(
-            HN_ALGOLIA,
-            params={"tags": "front_page", "hitsPerPage": 20},
-            headers=HEADERS,
-            timeout=20,
+            HN_ALGOLIA, params={"tags": "front_page", "hitsPerPage": 20},
+            headers=HEADERS, timeout=HTTP_TIMEOUT,
         )
         r.raise_for_status()
-        titles += [h["title"] for h in r.json().get("hits", []) if h.get("title")]
+        return [h["title"] for h in r.json().get("hits", []) if h.get("title")]
     except requests.RequestException as exc:
         print(f"[trends] HN front_page failed: {exc}")
+        return []
 
-    for q in queries:
-        try:
-            r = requests.get(
-                HN_ALGOLIA,
-                params={"query": q, "tags": "story", "hitsPerPage": 8},
-                headers=HEADERS,
-                timeout=20,
-            )
-            r.raise_for_status()
-            titles += [h["title"] for h in r.json().get("hits", []) if h.get("title")]
-        except requests.RequestException as exc:
-            print(f"[trends] HN query '{q}' failed: {exc}")
 
+def _hn_query(q: str) -> list[str]:
+    try:
+        r = requests.get(
+            HN_ALGOLIA, params={"query": q, "tags": "story", "hitsPerPage": 8},
+            headers=HEADERS, timeout=HTTP_TIMEOUT,
+        )
+        r.raise_for_status()
+        return [h["title"] for h in r.json().get("hits", []) if h.get("title")]
+    except requests.RequestException as exc:
+        print(f"[trends] HN query '{q}' failed: {exc}")
+        return []
+
+
+def _hacker_news(queries: list[str], limit: int = 12) -> list[str]:
+    """Pull trending tech headlines from Hacker News (front page + AI search),
+    fetched in parallel so slow queries don't stack up."""
+    titles: list[str] = []
+    with ThreadPoolExecutor(max_workers=len(queries) + 1) as ex:
+        results = list(ex.map(_hn_query, queries))
+    titles += _hn_front_page()
+    for r in results:
+        titles += r
     return titles[:limit]
 
 
@@ -69,7 +81,8 @@ def _google_trends(geo: str = "IN", limit: int = 12) -> list[str]:
     """Pull daily trending search terms from Google Trends RSS (broad demand signal)."""
     terms: list[str] = []
     try:
-        r = requests.get(GOOGLE_TRENDS_RSS.format(geo=geo), headers=HEADERS, timeout=20)
+        r = requests.get(GOOGLE_TRENDS_RSS.format(geo=geo), headers=HEADERS,
+                         timeout=HTTP_TIMEOUT)
         r.raise_for_status()
         root = ET.fromstring(r.content)
         for item in root.iter("item"):
@@ -81,28 +94,33 @@ def _google_trends(geo: str = "IN", limit: int = 12) -> list[str]:
     return terms[:limit]
 
 
+def _news_query(q: str, per_query: int = 5) -> list[str]:
+    out: list[str] = []
+    try:
+        url = GOOGLE_NEWS_RSS.format(q=requests.utils.quote(q))
+        r = requests.get(url, headers=HEADERS, timeout=HTTP_TIMEOUT)
+        r.raise_for_status()
+        root = ET.fromstring(r.content)
+        for item in root.iter("item"):
+            title = item.findtext("title")
+            if title:
+                # Google News titles look like "Headline - Publisher"; drop source.
+                out.append(title.rsplit(" - ", 1)[0].strip())
+                if len(out) >= per_query:
+                    break
+    except (requests.RequestException, ET.ParseError) as exc:
+        print(f"[trends] Google News '{q}' failed: {exc}")
+    return out
+
+
 def _google_news(queries: list[str], per_query: int = 5, limit: int = 18) -> list[str]:
-    """Pull FRESH, on-topic headlines from Google News RSS for each niche query.
-    This is our highest-relevance source: real, current things people search for
-    in our lane (new AI tools, app features, tech tips)."""
+    """Pull FRESH, on-topic headlines from Google News RSS for each niche query,
+    fetched in PARALLEL. This is our highest-relevance source: real, current things
+    people search for in our lane (new AI tools, app features, tech tips)."""
     titles: list[str] = []
-    for q in queries:
-        try:
-            url = GOOGLE_NEWS_RSS.format(q=requests.utils.quote(q))
-            r = requests.get(url, headers=HEADERS, timeout=20)
-            r.raise_for_status()
-            root = ET.fromstring(r.content)
-            count = 0
-            for item in root.iter("item"):
-                title = item.findtext("title")
-                if title:
-                    # Google News titles look like "Headline - Publisher"; drop source.
-                    titles.append(title.rsplit(" - ", 1)[0].strip())
-                    count += 1
-                    if count >= per_query:
-                        break
-        except (requests.RequestException, ET.ParseError) as exc:
-            print(f"[trends] Google News '{q}' failed: {exc}")
+    with ThreadPoolExecutor(max_workers=len(queries)) as ex:
+        for r in ex.map(lambda q: _news_query(q, per_query), queries):
+            titles += r
     return titles[:limit]
 
 
@@ -120,9 +138,16 @@ def get_trending(niche: str, geo: str = "IN", limit: int = 15) -> list[str]:
     relevant, in-demand topics FIRST (and random noise is filtered out). Falls
     back to the best available items if a slow news day yields few on-niche hits.
     """
-    news = _google_news(NICHE_QUERIES)          # freshest, most on-topic
-    hn = _hacker_news(["AI", "AI tools", "ChatGPT", "artificial intelligence"])
-    trends = _google_trends(geo)                # broad demand (mostly filtered)
+    # Run the three sources concurrently so the whole research step is bounded by
+    # the single slowest source (~seconds), not the sum of all of them (~minutes).
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_news = ex.submit(_google_news, NICHE_QUERIES)   # freshest, most on-topic
+        f_hn = ex.submit(_hacker_news,
+                         ["AI", "AI tools", "ChatGPT", "artificial intelligence"])
+        f_trends = ex.submit(_google_trends, geo)         # broad demand
+        news = f_news.result()
+        hn = f_hn.result()
+        trends = f_trends.result()
 
     # Dedupe while preserving source (news/hn are inherently on-niche).
     seen, items = set(), []

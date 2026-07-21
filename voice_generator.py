@@ -169,10 +169,12 @@ async def _synthesize(text: str, out_path: Path, voice: str,
         text, voice, rate=rate, volume=volume, pitch=pitch, boundary="WordBoundary"
     )
     words: list[dict] = []
+    audio_bytes = 0
     with open(out_path, "wb") as f:
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
                 f.write(chunk["data"])
+                audio_bytes += len(chunk["data"])
             elif chunk["type"] == "WordBoundary":
                 # edge-tts reports offsets/durations in 100-nanosecond units.
                 words.append({
@@ -180,7 +182,31 @@ async def _synthesize(text: str, out_path: Path, voice: str,
                     "start": chunk["offset"] / 1e7,
                     "duration": chunk["duration"] / 1e7,
                 })
+    if audio_bytes == 0:
+        # Streamed successfully but Microsoft returned an empty audio body.
+        raise edge_tts.exceptions.NoAudioReceived("Empty audio stream")
     return words
+
+
+def _synth(text: str, out_path: Path, voice: str, rate: str = "+3%",
+           volume: str = "+10%", pitch: str = "+0Hz", retries: int = 4) -> list[dict]:
+    """Run _synthesize with retries. edge-tts occasionally returns NoAudioReceived
+    or drops the connection (transient Microsoft endpoint hiccups, common on cloud
+    runners). Retrying with a short backoff almost always succeeds, so a single flaky
+    response no longer kills the whole pipeline."""
+    import time
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return asyncio.run(_synthesize(text, out_path, voice, rate=rate,
+                                           volume=volume, pitch=pitch))
+        except Exception as exc:  # noqa: BLE001  (retry all transient TTS errors)
+            last_exc = exc
+            wait = 2 * (attempt + 1)
+            print(f"[voice] TTS attempt {attempt + 1}/{retries} failed "
+                  f"({type(exc).__name__}: {str(exc)[:80]}); retrying in {wait}s...")
+            time.sleep(wait)
+    raise RuntimeError(f"edge-tts failed after {retries} attempts: {last_exc}")
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -219,7 +245,7 @@ def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
     if voice is None:
         voice = _voices_for_language(language or config.VIDEO_LANGUAGE)["narrator"]
     out_path = config.OUTPUT_DIR / filename
-    words = asyncio.run(_synthesize(text, out_path, voice))
+    words = _synth(text, out_path, voice)
     for w in words:
         w["speaker"] = "narrator"
     words, _ = _reduce_internal_pauses(out_path, words)  # tighten sentence gaps
@@ -305,9 +331,7 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
             continue
         v = _voice_for(speaker, language)
         tmp = config.OUTPUT_DIR / f"_line_{i}.mp3"
-        line_words = asyncio.run(
-            _synthesize(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"])
-        )
+        line_words = _synth(line, tmp, v["voice"], rate=v["rate"], pitch=v["pitch"])
         clip = AudioFileClip(str(tmp))
         # Trim BOTH leading and trailing silence edge-tts pads on, so the gap when
         # the voice switches (girl <-> boy) AND the pause before each kid starts
