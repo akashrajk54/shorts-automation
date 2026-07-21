@@ -86,6 +86,79 @@ def _enhance_audio(path: Path) -> None:
             pass
 
 
+def _shift_time(t: float, cuts: list[tuple[float, float]]) -> float:
+    """Map a timestamp from the ORIGINAL timeline to the timeline after `cuts`
+    (silence regions) have been removed, so word/segment timings stay in sync."""
+    removed = 0.0
+    for c0, c1 in cuts:
+        if c1 <= t:
+            removed += c1 - c0
+        elif c0 < t:
+            removed += t - c0
+    return max(0.0, t - removed)
+
+
+def _reduce_internal_pauses(path: Path, words: list[dict], max_gap: float = 0.18,
+                            lead_keep: float = 0.05, tail_keep: float = 0.12):
+    """Physically shorten the long silences edge-tts inserts between sentences of
+    the SAME speaker, then shift word timings by the removed amount so karaoke
+    captions stay perfectly aligned.
+
+    Returns (new_words, cuts). Best-effort: on any failure the original audio and
+    words are returned unchanged so the pipeline never breaks.
+    """
+    if not words:
+        return words, []
+    try:
+        from moviepy.audio.AudioClip import AudioArrayClip
+        from moviepy.editor import AudioFileClip
+
+        clip = AudioFileClip(str(path))
+        fps = int(clip.fps or 44100)
+        arr = clip.to_soundarray(fps=fps)
+        clip.close()
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        n = len(arr)
+        clip_dur = n / fps
+
+        cuts: list[tuple[float, float]] = []
+        # Trim excess leading silence before the first word.
+        first = words[0]["start"]
+        if first > lead_keep:
+            cuts.append((lead_keep, first))
+        # Cap the gap between every consecutive pair of words.
+        for i in range(len(words) - 1):
+            end_i = words[i]["start"] + words[i]["duration"]
+            nxt = words[i + 1]["start"]
+            if nxt - end_i > max_gap:
+                cuts.append((end_i + max_gap, nxt))
+        # Trim excess trailing silence after the last word.
+        last_end = words[-1]["start"] + words[-1]["duration"]
+        if clip_dur - last_end > tail_keep:
+            cuts.append((last_end + tail_keep, clip_dur))
+
+        if not cuts:
+            return words, []
+
+        mask = np.ones(n, dtype=bool)
+        for c0, c1 in cuts:
+            a = max(0, min(n, int(round(c0 * fps))))
+            b = max(0, min(n, int(round(c1 * fps))))
+            if b > a:
+                mask[a:b] = False
+        new_arr = arr[mask]
+
+        new_clip = AudioArrayClip(new_arr, fps=fps)
+        new_clip.write_audiofile(str(path), logger=None)
+        new_clip.close()
+
+        new_words = [{**w, "start": _shift_time(w["start"], cuts)} for w in words]
+        return new_words, cuts
+    except Exception:  # noqa: BLE001
+        return words, []
+
+
 async def _synthesize(text: str, out_path: Path, voice: str,
                       rate: str = "+3%", volume: str = "+10%", pitch: str = "+0Hz") -> list[dict]:
     """Stream TTS to out_path and return per-word timings.
@@ -149,6 +222,7 @@ def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
     words = asyncio.run(_synthesize(text, out_path, voice))
     for w in words:
         w["speaker"] = "narrator"
+    words, _ = _reduce_internal_pauses(out_path, words)  # tighten sentence gaps
     segments = _sentence_segments(text, words) if words else []
     _enhance_audio(out_path)  # warmer, fuller, more human-sounding VO
     return out_path, words, segments
@@ -271,6 +345,14 @@ def generate_dialogue_voice(dialogue: list[dict], filename: str = "voice.mp3",
         except OSError:
             pass
 
+    # Tighten long same-speaker sentence gaps, keeping word + segment sync.
+    words, cuts = _reduce_internal_pauses(out_path, words)
+    if cuts:
+        for seg in segments:
+            s0 = _shift_time(seg["start"], cuts)
+            s1 = _shift_time(seg["start"] + seg["duration"], cuts)
+            seg["start"] = s0
+            seg["duration"] = max(0.1, s1 - s0)
     _enhance_audio(out_path)  # warmer, fuller, more human-sounding VO
     return out_path, words, segments
 
