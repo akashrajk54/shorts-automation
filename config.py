@@ -40,7 +40,7 @@ POLLINATIONS_TOKEN = os.getenv("POLLINATIONS_TOKEN", "").strip()
 POLLINATIONS_REFERRER = os.getenv("POLLINATIONS_REFERRER", "shorts-automation").strip()
 
 # --- Content ---
-NICHE = os.getenv("NICHE", "AI tools and tech tips").strip()
+NICHE = os.getenv("NICHE", "AI & tech tools that make everyday life easier").strip()
 # Prompt/video style: "tips" (single-narrator tip) or "story" (two kids dialogue).
 PROMPT_STYLE = os.getenv("PROMPT_STYLE", "tips").strip().lower()
 # Spoken language of the video (e.g. hindi, bengali, english, spanish, tamil...).

@@ -24,9 +24,10 @@ GEMINI_MODELS = [
 TIPS_PROMPT_TEMPLATE = """You are a world-class viral YouTube Shorts scriptwriter and researcher
 for the niche: "{niche}".
 
-Today's CURRENTLY TRENDING topics/headlines (use these for inspiration to ride the
-wave of what people care about RIGHT NOW - pick or adapt the most relevant, genuinely
-useful and viral-worthy angle for the niche; ignore irrelevant ones):
+Today's CURRENTLY TRENDING topics/headlines, RANKED by relevance + current demand
+(top = strongest). STRONGLY prefer building today's video on one of the TOP trends you
+haven't used before - this rides real search demand. Adapt it into a genuinely useful,
+viral-worthy tip for the niche:
 {trends}
 
 DO NOT repeat or closely resemble any of these RECENT videos we already made
@@ -93,8 +94,10 @@ while still delivering COMPLETE, correct, useful information the viewer can act 
 FRESHNESS DIRECTIVE FOR TODAY (follow this to make the story feel NEW, not a repeat):
 {variety}
 
-Today's CURRENTLY TRENDING topics/headlines (use for inspiration, pick the most
-relevant + genuinely useful AI angle; ignore irrelevant ones):
+Today's CURRENTLY TRENDING topics/headlines, RANKED by relevance + current demand
+(top = strongest). STRONGLY prefer basing today's story on one of the TOP trends you
+haven't used before (ride real search demand), turned into a genuinely useful AI angle
+the kids explain:
 {trends}
 
 DO NOT repeat or closely resemble any of these RECENT videos we already made
