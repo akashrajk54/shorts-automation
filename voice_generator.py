@@ -245,7 +245,9 @@ def generate_voice(text: str, voice: str = None, filename: str = "voice.mp3",
     if voice is None:
         voice = _voices_for_language(language or config.VIDEO_LANGUAGE)["narrator"]
     out_path = config.OUTPUT_DIR / filename
-    words = _synth(text, out_path, voice)
+    # Lively, energetic pace (config.VOICE_RATE, ~+12%) => more info per second,
+    # less boredom, better completion - while staying clear.
+    words = _synth(text, out_path, voice, rate=config.VOICE_RATE)
     for w in words:
         w["speaker"] = "narrator"
     words, _ = _reduce_internal_pauses(out_path, words)  # tighten sentence gaps

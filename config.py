@@ -45,6 +45,11 @@ NICHE = os.getenv("NICHE", "AI & tech tools that make everyday life easier").str
 PROMPT_STYLE = os.getenv("PROMPT_STYLE", "tips").strip().lower()
 # Spoken language of the video (e.g. hindi, bengali, english, spanish, tamil...).
 VIDEO_LANGUAGE = os.getenv("VIDEO_LANGUAGE", "hindi").strip().lower()
+# Narrator speaking speed for 'tips' mode (edge-tts rate, e.g. "+12%"). A lively
+# +10-15% sounds energetic and confident (better retention, less boring) while
+# staying perfectly clear. Going much past ~+25% starts sounding rushed/robotic
+# and hurts comprehension, so keep it in the 8-18% range.
+VOICE_RATE = os.getenv("VOICE_RATE", "+12%").strip()
 
 # --- Upload ---
 AUTO_UPLOAD = os.getenv("AUTO_UPLOAD", "true").strip().lower() == "true"

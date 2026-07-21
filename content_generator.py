@@ -39,9 +39,11 @@ DO NOT repeat or closely resemble any of these RECENT videos we already made
 (choose a clearly different tool/topic/angle for real variety):
 {history}
 
-Create ONE COMPLETE, self-contained short video for today. Target a TIGHT 15-22 second
-narration (about 45-60 spoken words). SHORTER + PUNCHIER = higher completion rate =
-more reach (this is the #1 driver of Shorts distribution). The FIRST sentence MUST be a
+Create ONE COMPLETE, self-contained short video for today. It will be read aloud at an
+ENERGETIC, slightly-fast pace, so target about 50-65 spoken words that land in UNDER 18
+seconds. SHORTER + PUNCHIER = higher completion rate = more reach (this is the #1 driver
+of Shorts distribution). Fast, lively pacing keeps viewers from getting bored - never pad
+or waste a word. The FIRST sentence MUST be a
 scroll-stopping HOOK landing in the first ~1.5 seconds: a bold claim, a surprising
 result, or a 'you're doing X wrong' line that makes a scroller STOP. No slow intro -
 deliver the useful tip fast.
