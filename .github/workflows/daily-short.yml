@@ -54,6 +54,12 @@ jobs:
       ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
       ELEVENLABS_VOICE_GIRL: ${{ vars.ELEVENLABS_VOICE_GIRL }}
       ELEVENLABS_VOICE_BOY: ${{ vars.ELEVENLABS_VOICE_BOY }}
+      # Cross-post the same Short to Facebook / Instagram Reels.
+      POST_TO_FACEBOOK: ${{ vars.POST_TO_FACEBOOK || 'false' }}
+      POST_TO_INSTAGRAM: ${{ vars.POST_TO_INSTAGRAM || 'false' }}
+      FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
+      FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+      IG_USER_ID: ${{ vars.IG_USER_ID }}
 
     steps:
       - name: Checkout
