@@ -186,6 +186,7 @@ def run() -> None:
     # 7. Optional auto-upload (off by default; upload manually using the pack above).
     if not config.AUTO_UPLOAD:
         print("AUTO_UPLOAD disabled - upload manually using the Telegram pack.")
+        _cross_post_meta(video_path, content)  # still cross-post to FB/IG if enabled
         return
 
     try:
@@ -208,6 +209,30 @@ def run() -> None:
             "Telegram to upload manually. Full error below:"
         )
         notifier.notify_error("YouTube upload", exc)
+
+    # 8. Cross-post the same Short to Facebook / Instagram (if enabled).
+    _cross_post_meta(video_path, content)
+
+
+def _cross_post_meta(video_path, content: dict) -> None:
+    """Post the finished video to Facebook/Instagram Reels if configured.
+    Fully best-effort: never raises, so it can't break the rest of the run."""
+    if not (config.POST_TO_FACEBOOK or config.POST_TO_INSTAGRAM):
+        return
+    try:
+        from meta_uploader import cross_post  # lazy import
+
+        notifier.notify("⬆️ Cross-posting to Facebook/Instagram...")
+        results = cross_post(video_path, content)
+        for platform, res in results.items():
+            if str(res).startswith("ERROR"):
+                notifier.notify(f"⚠️ {platform.title()} post failed: {res}")
+            else:
+                notifier.notify(f"🎉 Posted to {platform.title()}:\n{res}")
+    except Exception as exc:  # noqa: BLE001
+        print("Meta cross-post failed:")
+        traceback.print_exc()
+        notifier.notify_error("Facebook/Instagram cross-post", exc)
 
 
 if __name__ == "__main__":

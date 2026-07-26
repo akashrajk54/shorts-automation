@@ -73,6 +73,16 @@ ELEVENLABS_VOICE_BOY = os.getenv("ELEVENLABS_VOICE_BOY", "").strip()
 AUTO_UPLOAD = os.getenv("AUTO_UPLOAD", "true").strip().lower() == "true"
 YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "private").strip().lower()
 
+# --- Facebook / Instagram (Meta Graph API) cross-posting ---
+# Post the same finished Short as a Facebook Reel and/or Instagram Reel.
+# Both fail gracefully (a Meta error never blocks YouTube/Telegram delivery).
+POST_TO_FACEBOOK = os.getenv("POST_TO_FACEBOOK", "false").strip().lower() == "true"
+POST_TO_INSTAGRAM = os.getenv("POST_TO_INSTAGRAM", "false").strip().lower() == "true"
+META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v25.0").strip()
+FB_PAGE_ID = os.getenv("FB_PAGE_ID", "").strip()
+FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN", "").strip()          # permanent Page token
+IG_USER_ID = os.getenv("IG_USER_ID", "").strip()               # IG Business account id (for Instagram)
+
 # --- Telegram fallback ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
