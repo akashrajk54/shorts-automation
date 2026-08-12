@@ -1,10 +1,5 @@
 [
   {
-    "date": "2026-07-22T10:03:17",
-    "title": "Julius AI: 10 \u0938\u0947\u0915\u0902\u0921 \u092e\u0947\u0902 Dashboard \u092c\u0928\u093e\u0913 \ud83d\udcca",
-    "topic": "Julius AI Dashboards"
-  },
-  {
     "date": "2026-07-22T16:02:15",
     "title": "ChatGPT Voice Hack: Interview \u092e\u0947\u0902 Full Marks \ud83e\udd2f",
     "topic": "ChatGPT Voice Interview"
@@ -298,5 +293,10 @@
     "date": "2026-08-11T16:02:33",
     "title": "Julius AI: Excel \u0915\u093e \u0915\u093e\u092e 5s \u092e\u0947\u0902 \u0916\u093c\u0924\u094d\u092e \u0915\u0930\u094b \ud83e\udd2f",
     "topic": "Julius AI Excel"
+  },
+  {
+    "date": "2026-08-12T07:03:10",
+    "title": "ChatGPT Humanize Hack: AI Text \u0915\u094b Human \u092c\u0928\u093e\u0913 5s \u092e\u0947\u0902 \ud83e\udd2f",
+    "topic": "ChatGPT Humanize Prompt"
   }
 ]
