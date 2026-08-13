@@ -1,10 +1,5 @@
 [
   {
-    "date": "2026-07-23T16:02:25",
-    "title": "ChatGPT Secret Trick: \u091c\u093e\u0928\u093f\u090f AI \u0906\u092a\u0915\u0947 \u092c\u093e\u0930\u0947 \u092e\u0947\u0902 \u0915\u094d\u092f\u093e \u091c\u093e\u0928\u0924\u093e \u0939\u0948 \ud83e\udd2f",
-    "topic": "ChatGPT Persona Audit"
-  },
-  {
     "date": "2026-07-24T07:02:38",
     "title": "DaVinci Resolve 21: \u092b\u094d\u0930\u0940 \u092e\u0947\u0902 AI Video Editing \ud83e\udd2f",
     "topic": "DaVinci Resolve 21 AI"
@@ -298,5 +293,10 @@
     "date": "2026-08-13T07:02:24",
     "title": "ChatGPT Study Hack: Tough Topics 10x \u0924\u0947\u091c\u093c \u0938\u092e\u091d\u094b \ud83e\udd2f",
     "topic": "ChatGPT Socratic Tutor"
+  },
+  {
+    "date": "2026-08-13T10:03:31",
+    "title": "Gemini AI: YouTube Video Summarize \u0915\u0930\u094b 5s \u092e\u0947\u0902 \ud83e\udd2f",
+    "topic": "Gemini YouTube extension"
   }
 ]
