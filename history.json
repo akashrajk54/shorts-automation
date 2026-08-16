@@ -1,10 +1,5 @@
 [
   {
-    "date": "2026-07-26T10:02:15",
-    "title": "Google NotebookLM: PDF \u0915\u094b \u092c\u0928\u093e\u0913 Podcast \ud83e\udd2f",
-    "topic": "Google NotebookLM podcast"
-  },
-  {
     "date": "2026-07-26T16:02:15",
     "title": "Mapify AI: 500 Pages \u0915\u0940 Book 5 \u0938\u0947\u0915\u0902\u0921 \u092e\u0947\u0902 \u092f\u093e\u0926! \ud83e\udd2f",
     "topic": "Mapify AI mindmap"
@@ -298,5 +293,10 @@
     "date": "2026-08-16T07:03:03",
     "title": "Krea AI: Blur Photo \u0915\u094b 4K HD \u092c\u0928\u093e\u0913 5s \u092e\u0947\u0902 \ud83e\udd2f",
     "topic": "Krea AI Enhancer"
+  },
+  {
+    "date": "2026-08-16T10:02:43",
+    "title": "Clipdrop AI: Watermark \u0939\u091f\u093e\u0913 \u0938\u093f\u0930\u094d\u092b 2s \u092e\u0947\u0902 \ud83e\udd2f",
+    "topic": "Clipdrop AI Cleanup"
   }
 ]
