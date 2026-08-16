@@ -1,10 +1,5 @@
 [
   {
-    "date": "2026-07-26T07:03:15",
-    "title": "Meta AI: WhatsApp \u092a\u0930 PPT \u092c\u0928\u093e\u0913 \ud83e\udd2f",
-    "topic": "Meta AI slides"
-  },
-  {
     "date": "2026-07-26T10:02:15",
     "title": "Google NotebookLM: PDF \u0915\u094b \u092c\u0928\u093e\u0913 Podcast \ud83e\udd2f",
     "topic": "Google NotebookLM podcast"
@@ -298,5 +293,10 @@
     "date": "2026-08-15T16:02:18",
     "title": "Bolt.new: 10s \u092e\u0947\u0902 \u092a\u0942\u0930\u0940 Website \u092c\u0928\u093e\u0913 \u092c\u093f\u0928\u093e Coding \ud83e\udd2f",
     "topic": "Bolt.new web builder"
+  },
+  {
+    "date": "2026-08-16T07:03:03",
+    "title": "Krea AI: Blur Photo \u0915\u094b 4K HD \u092c\u0928\u093e\u0913 5s \u092e\u0947\u0902 \ud83e\udd2f",
+    "topic": "Krea AI Enhancer"
   }
 ]
