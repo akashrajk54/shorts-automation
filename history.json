@@ -1,10 +1,5 @@
 [
   {
-    "date": "2026-07-26T16:02:15",
-    "title": "Mapify AI: 500 Pages \u0915\u0940 Book 5 \u0938\u0947\u0915\u0902\u0921 \u092e\u0947\u0902 \u092f\u093e\u0926! \ud83e\udd2f",
-    "topic": "Mapify AI mindmap"
-  },
-  {
     "date": "2026-07-27T07:02:15",
     "title": "AskYourPDF: AI \u0938\u0947 Books \u092e\u0947\u0902 \u092c\u093e\u0924\u0947\u0902 \u0915\u0930\u094b \ud83e\udd2f",
     "topic": "AskYourPDF book chat"
@@ -298,5 +293,10 @@
     "date": "2026-08-16T10:02:43",
     "title": "Clipdrop AI: Watermark \u0939\u091f\u093e\u0913 \u0938\u093f\u0930\u094d\u092b 2s \u092e\u0947\u0902 \ud83e\udd2f",
     "topic": "Clipdrop AI Cleanup"
+  },
+  {
+    "date": "2026-08-16T16:06:04",
+    "title": "v0.dev: Prompt \u0938\u0947 Web UI \u092c\u0928\u093e\u0913 5s \u092e\u0947\u0902 \ud83e\udd2f",
+    "topic": "v0 dev UI builder"
   }
 ]
